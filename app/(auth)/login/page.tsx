@@ -15,9 +15,6 @@ import {
   ArrowRight, 
   Loader2,
   ShieldCheck,
-  Clock,
-  BarChart3,
-  Users,
 } from "lucide-react"
 
 const loginSchema = z.object({
@@ -80,164 +77,20 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-white flex">
+    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
       
-      {/* LEFT PANEL — Brand & Visual */}
-      <div className="hidden lg:flex lg:w-1/2 relative 
-        overflow-hidden bg-gradient-to-br 
-        from-slate-900 via-slate-900 to-indigo-950">
+      {/* Login Form Container */}
+      <div className="w-full max-w-md flex flex-col bg-white sm:rounded-2xl sm:shadow-xl sm:border sm:border-slate-100 overflow-hidden">
         
-        {/* Decorative grid pattern */}
-        <div 
-          className="absolute inset-0 opacity-[0.03]"
-          style={{
-            backgroundImage: `
-              linear-gradient(rgba(255,255,255,0.5) 1px, transparent 1px),
-              linear-gradient(90deg, rgba(255,255,255,0.5) 1px, transparent 1px)
-            `,
-            backgroundSize: '48px 48px'
-          }}
-        />
-        
-        {/* Glowing orb accents */}
-        <div className="absolute top-20 right-20 w-96 h-96 
-          bg-indigo-500/20 rounded-full blur-3xl" />
-        <div className="absolute bottom-20 left-20 w-80 h-80 
-          bg-purple-500/10 rounded-full blur-3xl" />
-        
-        {/* Content */}
-        <div className="relative z-10 flex flex-col justify-between 
-          p-12 xl:p-16 w-full">
-          
-          {/* Top — Logo */}
+        {/* Logo (top) */}
+        <div className="flex justify-center pt-10">
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-lg bg-white 
-              flex items-center justify-center shadow-lg">
-              <div className="w-4 h-4 bg-gradient-to-br 
-                from-indigo-600 to-purple-600 rounded-sm" />
-            </div>
-            <span className="text-white font-semibold text-lg 
-              tracking-tight">
-              Startaply
-            </span>
-          </div>
-          
-          {/* Middle — Main content */}
-          <div className="max-w-md">
-            <div className="mb-8">
-              <div className="inline-flex items-center gap-2 
-                px-3 py-1 rounded-full bg-white/10 
-                border border-white/10 mb-6">
-                <span className="w-1.5 h-1.5 bg-emerald-400 
-                  rounded-full animate-pulse" />
-                <span className="text-xs text-white/70 
-                  font-medium">
-                  HR Management Platform
-                </span>
-              </div>
-              
-              <h1 className="text-4xl xl:text-5xl font-bold 
-                text-white leading-[1.1] tracking-tight mb-4">
-                Manage your team
-                <br />
-                <span className="bg-gradient-to-r from-indigo-300 
-                  to-purple-300 bg-clip-text text-transparent">
-                  with precision.
-                </span>
-              </h1>
-              
-              <p className="text-slate-400 text-base 
-                leading-relaxed">
-                A modern platform for tracking attendance, 
-                managing leaves, and building a productive 
-                workplace culture.
-              </p>
-            </div>
-            
-            {/* Feature list */}
-            <div className="space-y-3">
-              {[
-                { 
-                  icon: Clock, 
-                  title: "Real-time attendance",
-                  description: "Live tracking with automated timers"
-                },
-                { 
-                  icon: Users, 
-                  title: "Team management",
-                  description: "Complete employee lifecycle tools"
-                },
-                { 
-                  icon: BarChart3, 
-                  title: "Smart analytics",
-                  description: "Insights that drive better decisions"
-                },
-              ].map((feature) => (
-                <div key={feature.title} 
-                  className="flex items-start gap-3 group">
-                  <div className="w-9 h-9 rounded-lg bg-white/5 
-                    border border-white/10 flex items-center 
-                    justify-center flex-shrink-0
-                    group-hover:bg-white/10 transition-colors">
-                    <feature.icon className="w-4 h-4 
-                      text-indigo-300" />
-                  </div>
-                  <div>
-                    <p className="text-white text-sm font-medium">
-                      {feature.title}
-                    </p>
-                    <p className="text-slate-500 text-xs mt-0.5">
-                      {feature.description}
-                    </p>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-          
-          {/* Bottom — Social proof / stats */}
-          <div className="pt-8 border-t border-white/10">
-            <div className="flex items-center gap-6">
-              <div>
-                <p className="text-2xl font-bold text-white 
-                  tracking-tight">99.9%</p>
-                <p className="text-xs text-slate-500 mt-1">
-                  Uptime
-                </p>
-              </div>
-              <div className="w-px h-8 bg-white/10" />
-              <div>
-                <p className="text-2xl font-bold text-white 
-                  tracking-tight">SOC 2</p>
-                <p className="text-xs text-slate-500 mt-1">
-                  Compliant
-                </p>
-              </div>
-              <div className="w-px h-8 bg-white/10" />
-              <div>
-                <p className="text-2xl font-bold text-white 
-                  tracking-tight">24/7</p>
-                <p className="text-xs text-slate-500 mt-1">
-                  Support
-                </p>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      {/* RIGHT PANEL — Login Form */}
-      <div className="w-full lg:w-1/2 flex flex-col">
-        
-        {/* Mobile logo (top) */}
-        <div className="lg:hidden px-6 pt-8">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-lg 
+            <div className="w-10 h-10 rounded-xl 
               bg-gradient-to-br from-indigo-600 to-purple-600 
-              flex items-center justify-center">
+              flex items-center justify-center shadow-md">
               <div className="w-4 h-4 bg-white rounded-sm" />
             </div>
-            <span className="font-semibold text-lg 
+            <span className="font-bold text-2xl 
               tracking-tight text-slate-900">
               Startaply
             </span>
@@ -246,7 +99,7 @@ export default function LoginPage() {
         
         {/* Form container */}
         <div className="flex-1 flex items-center justify-center 
-          px-6 py-12 lg:p-16">
+          px-6 py-8">
           <div className="w-full max-w-sm">
             
             {/* Header */}
@@ -442,7 +295,7 @@ export default function LoginPage() {
         </div>
         
         {/* Footer */}
-        <div className="px-6 pb-6 lg:px-16 lg:pb-8">
+        <div className="px-6 pb-8">
           <div className="flex items-center justify-between 
             text-xs text-slate-400">
             <p>© 2024 Startaply Inc.</p>
