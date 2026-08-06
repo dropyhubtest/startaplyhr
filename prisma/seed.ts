@@ -64,58 +64,18 @@ async function main() {
   console.log("✅ Admin user created:", admin.email)
 
   // ─── Employees ────────────────────────────────────────────────
-  const employeePassword = await bcrypt.hash("Emp@123", 12)
+  const batmanPassword = await bcrypt.hash("Batman@123", 12)
 
   const employees = [
     {
       employeeId: "EMP001",
-      name: "Rahul Sharma",
-      email: "rahul@startaply.com",
+      name: "Batman",
+      email: "batman@gmail.com",
       department: "Engineering",
-      jobTitle: "Frontend Developer",
+      jobTitle: "Software Engineer",
       phone: "+91 9876543211",
-      salary: 85000,
-      dateOfJoining: new Date("2023-06-15"),
-    },
-    {
-      employeeId: "EMP002",
-      name: "Priya Patel",
-      email: "priya@startaply.com",
-      department: "Design",
-      jobTitle: "UI/UX Designer",
-      phone: "+91 9876543212",
-      salary: 70000,
-      dateOfJoining: new Date("2023-07-01"),
-    },
-    {
-      employeeId: "EMP003",
-      name: "Arjun Singh",
-      email: "arjun@startaply.com",
-      department: "Marketing",
-      jobTitle: "Marketing Executive",
-      phone: "+91 9876543213",
-      salary: 65000,
-      dateOfJoining: new Date("2023-08-10"),
-    },
-    {
-      employeeId: "EMP004",
-      name: "Sneha Reddy",
-      email: "sneha@startaply.com",
-      department: "Sales",
-      jobTitle: "Sales Executive",
-      phone: "+91 9876543214",
-      salary: 60000,
-      dateOfJoining: new Date("2023-09-01"),
-    },
-    {
-      employeeId: "EMP005",
-      name: "Karan Mehta",
-      email: "karan@startaply.com",
-      department: "Operations",
-      jobTitle: "Operations Executive",
-      phone: "+91 9876543215",
-      salary: 55000,
-      dateOfJoining: new Date("2023-10-15"),
+      salary: 120000,
+      dateOfJoining: new Date("2023-01-01"),
     },
   ]
 
@@ -125,10 +85,10 @@ async function main() {
       update: {},
       create: {
         ...emp,
-        password: employeePassword,
+        password: batmanPassword,
         role: "EMPLOYEE",
         isActive: true,
-        isFirstLogin: true,
+        isFirstLogin: false,
       },
     })
 
@@ -152,11 +112,7 @@ async function main() {
   console.log("\n🎉 Seed completed successfully!")
   console.log("\n📋 Login Credentials:")
   console.log("  Admin:    admin@startaply.com / Admin@123")
-  console.log("  Employee: rahul@startaply.com / Emp@123")
-  console.log("  Employee: priya@startaply.com / Emp@123")
-  console.log("  Employee: arjun@startaply.com / Emp@123")
-  console.log("  Employee: sneha@startaply.com / Emp@123")
-  console.log("  Employee: karan@startaply.com / Emp@123")
+  console.log("  Employee: batman@gmail.com / Batman@123")
 }
 
 main()
