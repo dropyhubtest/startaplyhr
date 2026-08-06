@@ -1,0 +1,206 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id             String          @id @default(cuid())
+  employeeId     String          @unique
+  name           String
+  email          String          @unique
+  password       String
+  role           String          @default("EMPLOYEE")
+  department     String
+  jobTitle       String
+  phone          String?
+  profilePhoto   String?
+  salary         Float?
+  dateOfJoining  DateTime
+  isActive       Boolean         @default(true)
+  isFirstLogin   Boolean         @default(true)
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  announcements  Announcement[]
+  attendanceLogs AttendanceLog[]
+  auditLogs      AuditLog[]
+  breakLogs      BreakLog[]
+  leaveBalance   LeaveBalance?
+  approvedLeaves Leave[]         @relation("ApprovedBy")
+  leaves         Leave[]
+  notifications  Notification[]
+  taskComments   TaskComment[]
+  tasksCreated   Task[]          @relation("TaskCreatedBy")
+  tasksAssigned  Task[]          @relation("TaskAssignedTo")
+
+  @@map("users")
+}
+
+model AttendanceLog {
+  id                String     @id @default(cuid())
+  userId            String
+  date              DateTime
+  loginTime         DateTime?
+  logoutTime        DateTime?
+  totalWorkMinutes  Int        @default(0)
+  totalBreakMinutes Int        @default(0)
+  netWorkMinutes    Int        @default(0)
+  status            String     @default("ABSENT")
+  isLate            Boolean    @default(false)
+  overtimeMinutes   Int        @default(0)
+  adminNote         String?
+  correctedBy       String?
+  createdAt         DateTime   @default(now())
+  updatedAt         DateTime   @updatedAt
+  user              User       @relation(fields: [userId], references: [id])
+  breaks            BreakLog[]
+
+  @@unique([userId, date])
+  @@map("attendance_logs")
+}
+
+model BreakLog {
+  id                   String        @id @default(cuid())
+  attendanceLogId      String
+  userId               String
+  breakStart           DateTime
+  breakEnd             DateTime?
+  breakDurationMinutes Int?
+  createdAt            DateTime      @default(now())
+  user                 User          @relation(fields: [userId], references: [id])
+  attendanceLog        AttendanceLog @relation(fields: [attendanceLogId], references: [id])
+
+  @@map("break_logs")
+}
+
+model Leave {
+  id           String   @id @default(cuid())
+  userId       String
+  leaveType    String
+  startDate    DateTime
+  endDate      DateTime
+  totalDays    Int
+  reason       String
+  status       String   @default("PENDING")
+  adminComment String?
+  approvedById String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  approvedBy   User?    @relation("ApprovedBy", fields: [approvedById], references: [id])
+  user         User     @relation(fields: [userId], references: [id])
+
+  @@map("leaves")
+}
+
+model LeaveBalance {
+  id          String @id @default(cuid())
+  userId      String @unique
+  year        Int
+  sickLeave   Int    @default(10)
+  casualLeave Int    @default(12)
+  paidLeave   Int    @default(15)
+  wfhLeave    Int    @default(24)
+  usedSick    Int    @default(0)
+  usedCasual  Int    @default(0)
+  usedPaid    Int    @default(0)
+  usedWFH     Int    @default(0)
+  user        User   @relation(fields: [userId], references: [id])
+
+  @@map("leave_balances")
+}
+
+model Task {
+  id           String        @id @default(cuid())
+  title        String
+  description  String?
+  assignedToId String
+  assignedById String
+  priority     String        @default("MEDIUM")
+  status       String        @default("TODO")
+  deadline     DateTime?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+  comments     TaskComment[]
+  assignedBy   User          @relation("TaskCreatedBy", fields: [assignedById], references: [id])
+  assignedTo   User          @relation("TaskAssignedTo", fields: [assignedToId], references: [id])
+
+  @@map("tasks")
+}
+
+model TaskComment {
+  id        String   @id @default(cuid())
+  taskId    String
+  userId    String
+  comment   String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+
+  @@map("task_comments")
+}
+
+model Announcement {
+  id          String   @id @default(cuid())
+  title       String
+  content     String
+  createdById String
+  isUrgent    Boolean  @default(false)
+  targetAll   Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  createdBy   User     @relation(fields: [createdById], references: [id])
+
+  @@map("announcements")
+}
+
+model Notification {
+  id        String   @id @default(cuid())
+  userId    String
+  title     String
+  message   String
+  isRead    Boolean  @default(false)
+  type      String   @default("GENERAL")
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@map("notifications")
+}
+
+model CompanySettings {
+  id                   String @id @default(cuid())
+  companyName          String @default("Startaply")
+  workStartTime        String @default("09:00")
+  workEndTime          String @default("18:00")
+  lateThresholdMinutes Int    @default(30)
+  maxBreakMinutes      Int    @default(60)
+  overtimeAfterMinutes Int    @default(540)
+  defaultSickLeave     Int    @default(10)
+  defaultCasualLeave   Int    @default(12)
+  defaultPaidLeave     Int    @default(15)
+  defaultWFHLeave      Int    @default(24)
+
+  @@map("company_settings")
+}
+
+model AuditLog {
+  id        String   @id @default(cuid())
+  userId    String
+  action    String
+  details   String?
+  ipAddress String?
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id])
+
+  @@map("audit_logs")
+}
+
+model WorkingDayOverride {
+  id           String   @id @default(cuid())
+  date         DateTime @unique
+  isWorkingDay Boolean  @default(true)
+  createdAt    DateTime @default(now())
+
+  @@map("working_day_overrides")
+}
