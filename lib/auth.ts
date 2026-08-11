@@ -16,25 +16,30 @@ export const authOptions: NextAuthOptions = {
           throw new Error("Email and password are required")
         }
 
-        const normalizedEmail = credentials.email.toLowerCase().trim()
+        console.log(`🔑 Login Attempt: [${normalizedEmail}]`)
 
         const user = await prisma.user.findUnique({
           where: { email: normalizedEmail },
         })
 
         if (!user) {
+          console.log(`❌ Login Failed: User not found for [${normalizedEmail}]`)
           return null
         }
 
         if (!user.isActive) {
+          console.log(`❌ Login Failed: Account inactive for [${normalizedEmail}]`)
           throw new Error("Account is inactive. Please contact HR.")
         }
 
         const isPasswordValid = await bcrypt.compare(credentials.password, user.password)
 
         if (!isPasswordValid) {
+          console.log(`❌ Login Failed: Password mismatch for [${normalizedEmail}]`)
           return null
         }
+
+        console.log(`✅ Login Successful: [${normalizedEmail}] (${user.role})`)
 
         return {
           id: user.id,

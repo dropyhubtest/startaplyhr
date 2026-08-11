@@ -77,10 +77,10 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
+    <div suppressHydrationWarning className="min-h-screen bg-slate-50 flex items-center justify-center p-4">
       
       {/* Login Form Container */}
-      <div className="w-full max-w-md flex flex-col bg-white sm:rounded-2xl sm:shadow-xl sm:border sm:border-slate-100 overflow-hidden">
+      <div suppressHydrationWarning className="w-full max-w-md flex flex-col bg-white sm:rounded-2xl sm:shadow-xl sm:border sm:border-slate-100 overflow-hidden">
         
         {/* Logo (top) */}
         <div className="flex justify-center pt-10">
