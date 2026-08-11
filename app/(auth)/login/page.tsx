@@ -134,6 +134,7 @@ export default function LoginPage() {
 
             {/* Form */}
             <form onSubmit={handleSubmit(onSubmit)} 
+              suppressHydrationWarning
               className="space-y-4">
               
               {/* Email field */}
@@ -182,6 +183,7 @@ export default function LoginPage() {
                   </label>
                   <button
                     type="button"
+                    suppressHydrationWarning
                     className="text-xs font-medium 
                       text-indigo-600 hover:text-indigo-700
                       transition-colors"
@@ -213,6 +215,7 @@ export default function LoginPage() {
                   />
                   <button
                     type="button"
+                    suppressHydrationWarning
                     onClick={() => setShowPassword(!showPassword)}
                     className="absolute right-3 top-1/2 
                       -translate-y-1/2 text-slate-400 
@@ -239,6 +242,7 @@ export default function LoginPage() {
                   cursor-pointer group">
                   <input
                     type="checkbox"
+                    suppressHydrationWarning
                     className="w-4 h-4 rounded border-slate-300 
                       text-indigo-600 focus:ring-2 
                       focus:ring-indigo-500/20 
@@ -255,6 +259,7 @@ export default function LoginPage() {
               {/* Submit button */}
               <button
                 type="submit"
+                suppressHydrationWarning
                 disabled={isLoading}
                 className="w-full h-11 rounded-lg 
                   bg-slate-900 hover:bg-slate-800 
