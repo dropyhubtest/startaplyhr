@@ -54,12 +54,6 @@ export default function LoginPage() {
     setIsLoading(true)
     setError("")
 
-    // Initiate background warm-up requests for fast load
-    fetch("/api/admin/dashboard/stats").catch(() => {})
-    fetch("/api/admin/dashboard/live-status").catch(() => {})
-    fetch("/api/announcements?limit=3").catch(() => {})
-    fetch("/api/tasks").catch(() => {})
-    fetch("/api/leaves").catch(() => {})
 
     try {
       const result = await signIn("credentials", {
