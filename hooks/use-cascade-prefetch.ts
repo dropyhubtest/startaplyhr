@@ -34,15 +34,11 @@ export function useCascadePrefetch(options: CascadePrefetchOptions) {
     hasPrefetchedRef.current = true
     
     const startPrefetch = async () => {
-      console.log(`🚀 Cascade prefetch starting from: ${pathname}`)
-      
       if (options.role === "ADMIN") {
         await prefetchAdminPages(queryClient)
       } else {
         await prefetchEmployeePages(queryClient, options.userId)
       }
-      
-      console.log("✅ All pages prefetched. Navigation will be instant.")
     }
     
     // Wait 500ms after current page is ready so active view renders smoothly first
@@ -108,7 +104,6 @@ async function prefetchAdminPages(queryClient: any) {
   ]
   
   // Load priority 1 in parallel
-  console.log("  📦 Loading priority 1 pages...")
   await Promise.all(
     priority1.map(item => 
       queryClient.prefetchQuery({
@@ -116,7 +111,6 @@ async function prefetchAdminPages(queryClient: any) {
         queryFn: async () => {
           const res = await fetch(item.url)
           if (!res.ok) throw new Error(`Failed: ${item.label}`)
-          console.log(`    ✓ ${item.label} loaded`)
           return res.json()
         },
         staleTime: 5 * 60 * 1000,
@@ -125,7 +119,6 @@ async function prefetchAdminPages(queryClient: any) {
   )
   
   // Then priority 2
-  console.log("  📦 Loading priority 2 pages...")
   await Promise.all(
     priority2.map(item =>
       queryClient.prefetchQuery({
@@ -133,7 +126,6 @@ async function prefetchAdminPages(queryClient: any) {
         queryFn: async () => {
           const res = await fetch(item.url)
           if (!res.ok) throw new Error(`Failed: ${item.label}`)
-          console.log(`    ✓ ${item.label} loaded`)
           return res.json()
         },
         staleTime: 5 * 60 * 1000,
@@ -142,7 +134,6 @@ async function prefetchAdminPages(queryClient: any) {
   )
   
   // Then priority 3
-  console.log("  📦 Loading priority 3 pages...")
   await Promise.all(
     priority3.map(item =>
       queryClient.prefetchQuery({
@@ -150,7 +141,6 @@ async function prefetchAdminPages(queryClient: any) {
         queryFn: async () => {
           const res = await fetch(item.url)
           if (!res.ok) throw new Error(`Failed: ${item.label}`)
-          console.log(`    ✓ ${item.label} loaded`)
           return res.json()
         },
         staleTime: 5 * 60 * 1000,
@@ -162,7 +152,7 @@ async function prefetchAdminPages(queryClient: any) {
 /**
  * Prefetch employee pages
  */
-async function prefetchEmployeePages(queryClient: any, userId?: string) {
+async function prefetchEmployeePages(queryClient: any, _userId?: string) {
   const pages = [
     {
       key: ["my-attendance"],
@@ -208,7 +198,6 @@ async function prefetchEmployeePages(queryClient: any, userId?: string) {
         queryFn: async () => {
           const res = await fetch(page.url)
           if (!res.ok) throw new Error(`Failed: ${page.label}`)
-          console.log(`    ✓ ${page.label} loaded`)
           return res.json()
         },
         staleTime: 5 * 60 * 1000,
@@ -216,3 +205,4 @@ async function prefetchEmployeePages(queryClient: any, userId?: string) {
     )
   )
 }
+

@@ -84,7 +84,6 @@ export default function AdminSidebar({
 
   const handleNavClick = (href: string) => {
     if (typeof window !== "undefined") {
-      console.log(`🔗 Navigating to: ${href} at ${new Date().toLocaleTimeString()}`)
       sessionStorage.setItem("nav-start", String(performance.now()))
       sessionStorage.setItem("nav-target", href)
     }
