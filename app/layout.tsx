@@ -2,12 +2,16 @@ import type { Metadata } from "next"
 import "./globals.css"
 import { Providers } from "./providers"
 import { Toaster } from "react-hot-toast"
+import { Toaster as SonnerToaster } from "sonner"
 
 export const metadata: Metadata = {
   title: "Startaply HR — Employee Management Portal",
   description:
     "A modern HR management portal for Startaply — manage employees, attendance, leaves, tasks, and more.",
   keywords: ["HR", "management", "attendance", "employees", "Startaply"],
+  icons: {
+    icon: "/favicon.ico",
+  },
 }
 
 import { getServerSession } from "next-auth"
@@ -21,9 +25,6 @@ export default async function RootLayout({
   const session = await getServerSession(authOptions)
   return (
     <html lang="en" suppressHydrationWarning className="font-sans">
-      <head>
-        <link rel="icon" href="/favicon.ico" sizes="any" />
-      </head>
       <body className="min-h-screen antialiased" suppressHydrationWarning>
         <Providers session={session}>
           {children}
@@ -46,6 +47,7 @@ export default async function RootLayout({
               }
             }}
           />
+          <SonnerToaster position="top-right" expand={true} />
         </Providers>
       </body>
     </html>

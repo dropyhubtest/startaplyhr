@@ -10,11 +10,10 @@ import { toast } from "sonner"
 import { Plus, LayoutGrid, List as ListIcon, Loader2, Search } from "lucide-react"
 import { cn } from "@/lib/utils"
 
+import { useQuery, useQueryClient } from "@tanstack/react-query"
+
 export default function AdminTasksPage() {
-  const [tasks, setTasks] = useState<any[]>([])
-  const [employees, setEmployees] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
-  
+  const queryClient = useQueryClient()
   const [employeeFilter, setEmployeeFilter] = useState("all")
   const [priorityFilter, setPriorityFilter] = useState("all")
   const [viewMode, setViewMode] = useState<"board" | "list">("board")
@@ -22,25 +21,26 @@ export default function AdminTasksPage() {
   const [createModalOpen, setCreateModalOpen] = useState(false)
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
 
-  const fetchTasks = useCallback(async () => {
-    setLoading(true)
-    try {
+  const isDefault = employeeFilter === "all" && priorityFilter === "all"
+  const queryKey = isDefault ? ["tasks"] : ["tasks", { assignedTo: employeeFilter, priority: priorityFilter }]
+
+  const { data: tasksQueryData, isLoading: loading } = useQuery({
+    queryKey,
+    queryFn: async () => {
       const params = new URLSearchParams({
-        limit: "100", // Fetch enough for board view
+        limit: "100",
         assignedTo: employeeFilter,
         priority: priorityFilter
       })
       const res = await fetch(`/api/tasks?${params}`)
-      if (res.ok) {
-        const data = await res.json()
-        setTasks(data.tasks)
-      }
-    } catch (e) {
-      toast.error("Failed to load tasks")
-    } finally {
-      setLoading(false)
-    }
-  }, [employeeFilter, priorityFilter])
+      if (!res.ok) throw new Error("Failed to load tasks")
+      return res.json()
+    },
+    staleTime: 5 * 60 * 1000,
+  })
+
+  const tasks = tasksQueryData?.tasks || []
+  const [employees, setEmployees] = useState<any[]>([])
 
   const fetchEmployees = useCallback(async () => {
     try {
@@ -53,24 +53,23 @@ export default function AdminTasksPage() {
   }, [])
 
   useEffect(() => {
-    fetchTasks()
     fetchEmployees()
-  }, [fetchTasks, fetchEmployees])
+  }, [fetchEmployees])
 
-  const handleTaskUpdate = (updatedTask: any) => {
-    setTasks(prev => prev.map(t => t.id === updatedTask.id ? { ...t, ...updatedTask } : t))
+  const handleTaskUpdate = () => {
+    queryClient.invalidateQueries({ queryKey: ["tasks"] })
   }
 
-  const handleTaskDelete = (taskId: string) => {
-    setTasks(prev => prev.filter(t => t.id !== taskId))
+  const handleTaskDelete = () => {
+    queryClient.invalidateQueries({ queryKey: ["tasks"] })
   }
 
   // Group tasks for Board View
   const groupedTasks = {
-    TODO: tasks.filter(t => t.status === "TODO"),
-    INPROGRESS: tasks.filter(t => t.status === "INPROGRESS"),
-    COMPLETED: tasks.filter(t => t.status === "COMPLETED"),
-    BLOCKED: tasks.filter(t => t.status === "BLOCKED"),
+    TODO: tasks.filter((t: any) => t.status === "TODO"),
+    INPROGRESS: tasks.filter((t: any) => t.status === "INPROGRESS"),
+    COMPLETED: tasks.filter((t: any) => t.status === "COMPLETED"),
+    BLOCKED: tasks.filter((t: any) => t.status === "BLOCKED"),
   }
 
   const columns = [
@@ -81,7 +80,7 @@ export default function AdminTasksPage() {
   ]
 
   return (
-    <div className="space-y-6 h-full flex flex-col max-w-7xl mx-auto">
+    <div className="space-y-6 h-full flex flex-col max-w-7xl mx-auto animate-in-fade">
       <PageHeader
         title="Task Management"
         description="Assign, track, and manage employee tasks"
@@ -100,7 +99,11 @@ export default function AdminTasksPage() {
         <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto">
           <Select value={employeeFilter} onValueChange={(v) => setEmployeeFilter(v as string)}>
             <SelectTrigger className="w-[180px] bg-white h-9 border-slate-200 text-[13px] shadow-sm focus:border-indigo-500">
-              <SelectValue placeholder="All Assignees" />
+              <SelectValue>
+                {employeeFilter === "all"
+                  ? "All Assignees"
+                  : employees.find((e) => e.id === employeeFilter)?.name || "Selected Employee"}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent className="border-slate-200 shadow-lg rounded-lg">
               <SelectItem value="all">All Assignees</SelectItem>
@@ -189,7 +192,7 @@ export default function AdminTasksPage() {
                 </div>
                 
                 <div className="p-3 flex-1 overflow-y-auto flex flex-col gap-3 custom-scrollbar">
-                  {col.tasks.map(task => (
+                  {col.tasks.map((task: any) => (
                     <TaskCard 
                       key={task.id} 
                       task={task} 
@@ -221,7 +224,7 @@ export default function AdminTasksPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {tasks.map(task => (
+                {tasks.map((task: any) => (
                   <tr 
                     key={task.id} 
                     onClick={() => setSelectedTaskId(task.id)}
@@ -267,8 +270,8 @@ export default function AdminTasksPage() {
         open={createModalOpen} 
         onClose={() => setCreateModalOpen(false)}
         employees={employees}
-        onSuccess={(newTask) => {
-          setTasks(prev => [newTask, ...prev])
+        onSuccess={() => {
+          queryClient.invalidateQueries({ queryKey: ["tasks"] })
         }}
       />
 

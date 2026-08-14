@@ -2,11 +2,26 @@ import { NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { reverseGeocode } from "@/lib/geocode"
+import { haversineDistance, calculateRouteDistance } from "@/lib/haversine"
+import { sendNotification } from "@/lib/utils"
 
 export async function POST(request: Request) {
   const session = await getServerSession(authOptions)
   if (!session || session.user.role !== "EMPLOYEE") {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
+  // Parse optional location data from request body
+  let latitude: number | null = null
+  let longitude: number | null = null
+
+  try {
+    const body = await request.json()
+    latitude = body.latitude ?? null
+    longitude = body.longitude ?? null
+  } catch {
+    // No body or invalid JSON — location is optional
   }
 
   const now = new Date()
@@ -18,7 +33,7 @@ export async function POST(request: Request) {
       userId: session.user.id,
       date: { gte: todayStart }
     },
-    include: { breaks: true }
+    include: { breaks: true, locationPings: { orderBy: { timestamp: "asc" } } }
   })
 
   if (!attendanceLog) {
@@ -57,6 +72,64 @@ export async function POST(request: Request) {
     finalStatus = "HALFDAY"
   }
 
+  // Reverse geocode logout location
+  let logoutAddress: string | null = null
+  let logoutCity: string | null = null
+
+  if (latitude != null && longitude != null) {
+    try {
+      const geo = await reverseGeocode(latitude, longitude)
+      if (geo) {
+        logoutAddress = geo.address
+        logoutCity = geo.city
+      }
+    } catch (e) {
+      console.log("[CLOCK_OUT] Geocoding failed, continuing without address")
+    }
+  }
+
+  // Calculate total distance
+  let totalDistanceKm: number = 0
+
+  if (latitude != null && longitude != null) {
+    // Build full route: login → pings → logout
+    const routePoints: { latitude: number; longitude: number }[] = []
+
+    if (attendanceLog.loginLatitude != null && attendanceLog.loginLongitude != null) {
+      routePoints.push({
+        latitude: attendanceLog.loginLatitude,
+        longitude: attendanceLog.loginLongitude,
+      })
+    }
+
+    // Add all location pings in chronological order
+    for (const ping of attendanceLog.locationPings) {
+      routePoints.push({ latitude: ping.latitude, longitude: ping.longitude })
+    }
+
+    // Add logout location
+    routePoints.push({ latitude, longitude })
+
+    if (routePoints.length >= 2) {
+      totalDistanceKm = Math.round(calculateRouteDistance(routePoints) * 100) / 100
+    }
+
+    // Create logout location ping
+    try {
+      await prisma.locationPing.create({
+        data: {
+          attendanceLogId: attendanceLog.id,
+          userId: session.user.id,
+          latitude,
+          longitude,
+          address: logoutAddress,
+        }
+      })
+    } catch (e) {
+      console.log("[CLOCK_OUT] Failed to create logout location ping")
+    }
+  }
+
   const updated = await prisma.attendanceLog.update({
     where: { id: attendanceLog.id },
     data: {
@@ -66,6 +139,11 @@ export async function POST(request: Request) {
       netWorkMinutes,
       overtimeMinutes,
       status: finalStatus,
+      logoutLatitude: latitude,
+      logoutLongitude: longitude,
+      logoutAddress,
+      logoutCity,
+      totalDistanceKm,
     }
   })
 
@@ -73,9 +151,32 @@ export async function POST(request: Request) {
     data: {
       userId: session.user.id,
       action: "CLOCK_OUT",
-      details: `Clocked out at ${now.toLocaleTimeString()}. Net work: ${Math.floor(netWorkMinutes/60)}h ${netWorkMinutes%60}m`,
+      details: `Clocked out at ${now.toLocaleTimeString()}. Net work: ${Math.floor(netWorkMinutes/60)}h ${netWorkMinutes%60}m${logoutCity ? `. Location: ${logoutCity}` : ""}${totalDistanceKm > 0 ? `. Distance: ${totalDistanceKm}km` : ""}`,
     }
   })
+
+  // Send real-time activity notification to employee
+  sendNotification(
+    session.user.id,
+    "Clock Out Recorded ⏹️",
+    `You clocked out. Work time: ${Math.floor(netWorkMinutes / 60)}h ${netWorkMinutes % 60}m${totalDistanceKm > 0 ? `. Distance: ${totalDistanceKm.toFixed(1)} km` : ""}`,
+    "ATTENDANCE_ALERT"
+  ).catch(() => {})
+
+  // Send real-time activity notification to all admins
+  prisma.user.findMany({
+    where: { role: "ADMIN", isActive: true },
+    select: { id: true }
+  }).then((admins) => {
+    admins.forEach((admin) => {
+      sendNotification(
+        admin.id,
+        "Employee Clocked Out ⏹️",
+        `${session.user.name} clocked out. Work time: ${Math.floor(netWorkMinutes / 60)}h ${netWorkMinutes % 60}m${totalDistanceKm > 0 ? `. Distance: ${totalDistanceKm.toFixed(1)} km` : ""}`,
+        "ATTENDANCE_ALERT"
+      ).catch(() => {})
+    })
+  }).catch(() => {})
 
   try {
     const { pusher } = await import("@/lib/pusher")
@@ -101,6 +202,8 @@ export async function POST(request: Request) {
       overtimeMinutes,
       status: finalStatus,
       hoursWorked: `${Math.floor(netWorkMinutes/60)}h ${netWorkMinutes % 60}m`,
+      logoutCity,
+      totalDistanceKm,
     }
   })
 }

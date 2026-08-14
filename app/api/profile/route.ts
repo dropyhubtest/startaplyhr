@@ -17,11 +17,23 @@ export async function GET(request: Request) {
       name: true,
       employeeId: true,
       department: true,
-      jobTitle: true,
-      dateOfJoining: true,
       profilePhoto: true,
       isActive: true,
-      // exclude password
+      // Personal info
+      dateOfBirth: true,
+      gender: true,
+      maritalStatus: true,
+      nationality: true,
+      bloodGroup: true,
+      personalEmail: true,
+      alternatePhone: true,
+      languagesKnown: true,
+      // Relations
+      address: true,
+      emergencyContact: true,
+      assetsAssigned: {
+        orderBy: { createdAt: "desc" },
+      },
     }
   })
 

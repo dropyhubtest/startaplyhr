@@ -36,28 +36,62 @@ model User {
   taskComments   TaskComment[]
   tasksCreated   Task[]          @relation("TaskCreatedBy")
   tasksAssigned  Task[]          @relation("TaskAssignedTo")
+  locationPings  LocationPing[]
+  locationTrackingConsent     Boolean   @default(false)
+  locationTrackingConsentDate DateTime?
+
+  // Personal Information
+  dateOfBirth       DateTime?
+  gender            String?
+  maritalStatus     String?
+  nationality       String?
+  bloodGroup        String?
+  personalEmail     String?
+  alternatePhone    String?
+  languagesKnown    String?
+
+  // Relations for extended employee profile
+  address           EmployeeAddress?
+  emergencyContact  EmergencyContact?
+  assetsAssigned    AssetAssignment[]
+
+  // Recruitment
+  jobsCreated       Job[]        @relation("JobsCreated")
+  jobsAssigned      Job[]        @relation("JobsAssigned")
+  jobsAssignedBy    Job[]        @relation("JobsAssignedBy")
+  jobUpdates        JobUpdate[]  @relation("JobUpdates")
 
   @@map("users")
 }
 
 model AttendanceLog {
-  id                String     @id @default(cuid())
+  id                String         @id @default(cuid())
   userId            String
   date              DateTime
   loginTime         DateTime?
   logoutTime        DateTime?
-  totalWorkMinutes  Int        @default(0)
-  totalBreakMinutes Int        @default(0)
-  netWorkMinutes    Int        @default(0)
-  status            String     @default("ABSENT")
-  isLate            Boolean    @default(false)
-  overtimeMinutes   Int        @default(0)
+  totalWorkMinutes  Int            @default(0)
+  totalBreakMinutes Int            @default(0)
+  netWorkMinutes    Int            @default(0)
+  status            String         @default("ABSENT")
+  isLate            Boolean        @default(false)
+  overtimeMinutes   Int            @default(0)
   adminNote         String?
   correctedBy       String?
-  createdAt         DateTime   @default(now())
-  updatedAt         DateTime   @updatedAt
-  user              User       @relation(fields: [userId], references: [id])
+  loginLatitude     Float?
+  loginLongitude    Float?
+  loginAddress      String?
+  loginCity         String?
+  logoutLatitude    Float?
+  logoutLongitude   Float?
+  logoutAddress     String?
+  logoutCity        String?
+  totalDistanceKm   Float?         @default(0)
+  createdAt         DateTime       @default(now())
+  updatedAt         DateTime       @updatedAt
+  user              User           @relation(fields: [userId], references: [id])
   breaks            BreakLog[]
+  locationPings     LocationPing[]
 
   @@unique([userId, date])
   @@map("attendance_logs")
@@ -170,19 +204,40 @@ model Notification {
 }
 
 model CompanySettings {
-  id                   String @id @default(cuid())
-  companyName          String @default("Startaply")
-  workStartTime        String @default("09:00")
-  workEndTime          String @default("18:00")
-  lateThresholdMinutes Int    @default(30)
-  maxBreakMinutes      Int    @default(60)
-  overtimeAfterMinutes Int    @default(540)
-  defaultSickLeave     Int    @default(10)
-  defaultCasualLeave   Int    @default(12)
-  defaultPaidLeave     Int    @default(15)
-  defaultWFHLeave      Int    @default(24)
+  id                           String  @id @default(cuid())
+  companyName                  String  @default("Startaply")
+  workStartTime                String  @default("09:00")
+  workEndTime                  String  @default("18:00")
+  lateThresholdMinutes         Int     @default(30)
+  maxBreakMinutes              Int     @default(60)
+  overtimeAfterMinutes         Int     @default(540)
+  defaultSickLeave             Int     @default(10)
+  defaultCasualLeave           Int     @default(12)
+  defaultPaidLeave             Int     @default(15)
+  defaultWFHLeave              Int     @default(24)
+  enableLocationTracking       Boolean @default(false)
+  requireLocationForClockIn    Boolean @default(false)
+  trackLocationDuringWork      Boolean @default(false)
+  locationPingIntervalMinutes  Int     @default(15)
 
   @@map("company_settings")
+}
+
+model LocationPing {
+  id              String        @id @default(cuid())
+  attendanceLogId String
+  userId          String
+  latitude        Float
+  longitude       Float
+  accuracy        Float?
+  address         String?
+  timestamp       DateTime      @default(now())
+  attendanceLog   AttendanceLog @relation(fields: [attendanceLogId], references: [id])
+  user            User          @relation(fields: [userId], references: [id])
+
+  @@index([attendanceLogId])
+  @@index([userId, timestamp])
+  @@map("location_pings")
 }
 
 model AuditLog {
@@ -205,3 +260,176 @@ model WorkingDayOverride {
 
   @@map("working_day_overrides")
 }
+
+model EmployeeAddress {
+  id                 String   @id @default(cuid())
+  userId             String   @unique
+  user               User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  // Current Address
+  currentStreet      String?
+  currentCity        String?
+  currentState       String?
+  currentCountry     String?  @default("India")
+  currentZipCode     String?
+  currentLandmark    String?
+  
+  // Permanent Address
+  permanentStreet    String?
+  permanentCity      String?
+  permanentState     String?
+  permanentCountry   String?  @default("India")
+  permanentZipCode   String?
+  permanentLandmark  String?
+  sameAsCurrent      Boolean  @default(false)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@map("employee_addresses")
+}
+
+model EmergencyContact {
+  id             String   @id @default(cuid())
+  userId         String   @unique
+  user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  name           String
+  relationship   String   // FATHER/MOTHER/SPOUSE/SIBLING/FRIEND/GUARDIAN/OTHER
+  primaryPhone   String
+  secondaryPhone String?
+  email          String?
+  address        String?
+  notes          String?  // Any medical conditions, allergies to note
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@map("emergency_contacts")
+}
+
+model AssetAssignment {
+  id              String    @id @default(cuid())
+  userId          String
+  user            User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  assetType       String    // LAPTOP/DESKTOP/MOBILE/TABLET/HEADPHONES/MONITOR/KEYBOARD/MOUSE/ACCESS_CARD/SIM_CARD/CHAIR/OTHER
+  assetName       String    // "MacBook Pro 14 M3", "iPhone 15 Pro"
+  brand           String?   // "Apple", "Dell", "Sony"
+  model           String?   // "M3 Max", "XPS 15"
+  serialNumber    String?
+  assetTag        String?   // Company asset tag/inventory number
+  
+  assignedDate    DateTime  @default(now())
+  assignedBy      String?   // Admin user ID who assigned
+  
+  condition       String?   @default("GOOD") // NEW/EXCELLENT/GOOD/FAIR/DAMAGED
+  
+  isReturned      Boolean   @default(false)
+  returnedDate    DateTime?
+  returnedTo      String?   // Admin user ID who received return
+  returnCondition String?   // Condition when returned
+  
+  purchaseDate    DateTime?
+  purchaseCost    Float?
+  warranty        DateTime? // Warranty expiry date
+  
+  notes           String?
+  imageUrl        String?   // Photo of the asset
+  
+  createdAt       DateTime  @default(now())
+  updatedAt       DateTime  @updatedAt
+  
+  @@index([userId])
+  @@index([assetType])
+  @@index([isReturned])
+  @@map("asset_assignments")
+}
+
+model Job {
+  id                String    @id @default(cuid())
+  jobId             String    @unique  // Auto: JOB001, JOB002...
+  
+  // Job Basic Info
+  title             String
+  clientName        String?
+  description       String
+  
+  // Requirements (simple)
+  skills            String?   // Comma-separated
+  experienceLevel   String?   // e.g., "2-5 years"
+  location          String?
+  workType          String    @default("ONSITE")  // REMOTE/HYBRID/ONSITE
+  jobType           String    @default("FULL_TIME") // FULL_TIME/CONTRACT/PART_TIME
+  
+  // Compensation
+  salaryRange       String?   // e.g., "10-15 LPA"
+  
+  // Priority & Status
+  priority          String    @default("MEDIUM")  // URGENT/HIGH/MEDIUM/LOW
+  status            String    @default("OPEN")    // OPEN/IN_PROGRESS/ON_HOLD/CLOSED/CANCELLED
+  
+  // Dates
+  receivedDate      DateTime  @default(now())
+  deadline          DateTime?
+  closedDate        DateTime?
+  
+  // Document
+  jdDocumentUrl     String?   // Uploaded JD file link / Google Drive link
+  jdDocumentName    String?   // Original file name
+  
+  // Positions
+  positionsToFill   Int       @default(1)
+  positionsFilled   Int       @default(0)
+  
+  // Relations
+  createdById       String
+  createdBy         User      @relation("JobsCreated", fields: [createdById], references: [id])
+  
+  assignedToId      String?
+  assignedTo        User?     @relation("JobsAssigned", fields: [assignedToId], references: [id])
+  
+  assignedById      String?
+  assignedByAdmin   User?     @relation("JobsAssignedBy", fields: [assignedById], references: [id])
+  assignedDate      DateTime?
+  
+  // Progress Updates by recruiter
+  updates           JobUpdate[]
+  
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  
+  @@index([status])
+  @@index([assignedToId])
+  @@index([createdById])
+  @@map("jobs")
+}
+
+model JobUpdate {
+  id                    String    @id @default(cuid())
+  jobId                 String
+  job                   Job       @relation(fields: [jobId], references: [id], onDelete: Cascade)
+  
+  userId                String
+  user                  User      @relation("JobUpdates", fields: [userId], references: [id])
+  
+  updateType            String    // ASSIGNMENT/UNASSIGNMENT/STATUS_CHANGE/PROGRESS_UPDATE/NOTE/HIRED/etc
+  
+  // Update content
+  title                 String    // Short summary
+  description           String?   // Detailed notes
+  
+  // Optional status change
+  oldStatus             String?
+  newStatus             String?
+  
+  // Optional: positions filled update
+  positionsFilledUpdate Int?
+  
+  createdAt             DateTime  @default(now())
+  
+  @@index([jobId])
+  @@index([userId])
+  @@map("job_updates")
+}
+

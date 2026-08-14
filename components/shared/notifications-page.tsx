@@ -8,52 +8,45 @@ import { toast } from "sonner"
 import { Bell, CheckCheck, Loader2, ListFilter } from "lucide-react"
 import { cn } from "@/lib/utils"
 
+import { useQuery, useQueryClient } from "@tanstack/react-query"
+
 export function NotificationsPage() {
-  const [notifications, setNotifications] = useState<Notification[]>([])
-  const [loading, setLoading] = useState(true)
+  const queryClient = useQueryClient()
   const [filter, setFilter] = useState<"all" | "unread" | "read">("all")
   const [typeFilter, setTypeFilter] = useState("ALL")
   const [markingAll, setMarkingAll] = useState(false)
 
-  useEffect(() => {
-    fetchNotifications()
-  }, [])
-
-  const fetchNotifications = async () => {
-    try {
+  const { data: notifData, isLoading: loading } = useQuery({
+    queryKey: ["notifications"],
+    queryFn: async () => {
       const res = await fetch("/api/notifications")
-      const data = await res.json()
-      if (res.ok) {
-        setNotifications(data.notifications)
-      }
-    } catch (e) {
-      toast.error("Failed to load notifications")
-    } finally {
-      setLoading(false)
-    }
-  }
+      if (!res.ok) throw new Error("Failed to load notifications")
+      return res.json()
+    },
+    staleTime: 5 * 60 * 1000,
+  })
+
+  const notifications: Notification[] = notifData?.notifications || []
 
   const handleMarkRead = async (id: string) => {
     try {
-      setNotifications(prev => prev.map(n => n.id === id ? { ...n, isRead: true } : n))
       const res = await fetch(`/api/notifications/${id}/read`, { method: "PUT" })
       if (!res.ok) throw new Error()
+      queryClient.invalidateQueries({ queryKey: ["notifications"] })
     } catch (e) {
       toast.error("Failed to mark as read")
-      fetchNotifications() // Revert on failure
     }
   }
 
   const handleMarkAllRead = async () => {
     setMarkingAll(true)
     try {
-      setNotifications(prev => prev.map(n => ({ ...n, isRead: true })))
       const res = await fetch("/api/notifications/read-all", { method: "PUT" })
       if (!res.ok) throw new Error()
+      queryClient.invalidateQueries({ queryKey: ["notifications"] })
       toast.success("All notifications marked as read")
     } catch (e) {
       toast.error("Failed to mark all as read")
-      fetchNotifications()
     } finally {
       setMarkingAll(false)
     }

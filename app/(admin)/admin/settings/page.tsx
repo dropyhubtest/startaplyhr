@@ -15,14 +15,15 @@ import {
 import { toast } from "sonner"
 import { 
   Building, Clock, Calendar, Building2, FileText, 
-  Save, Loader2, Thermometer, Coffee, Wallet, Home, RefreshCw 
+  Save, Loader2, Thermometer, Coffee, Wallet, Home, RefreshCw, MapPin 
 } from "lucide-react"
 import { cn } from "@/lib/utils"
 import { DEPARTMENTS } from "@/lib/constants"
 
+import { useQuery } from "@tanstack/react-query"
+
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState("company")
-  const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [formData, setFormData] = useState<any>({})
   
@@ -37,30 +38,27 @@ export default function SettingsPage() {
   const [resetConfirmText, setResetConfirmText] = useState("")
   const [resetting, setResetting] = useState(false)
 
+  const { data: settingsQueryData, isLoading: loading } = useQuery({
+    queryKey: ["settings"],
+    queryFn: async () => {
+      const res = await fetch("/api/settings")
+      if (!res.ok) throw new Error("Failed to load settings")
+      return res.json()
+    },
+    staleTime: 5 * 60 * 1000,
+  })
+
   useEffect(() => {
-    fetchSettings()
-    fetchDepartments()
-  }, [])
+    if (settingsQueryData?.settings) {
+      setFormData(settingsQueryData.settings)
+    }
+  }, [settingsQueryData])
 
   useEffect(() => {
     if (activeTab === "audit") {
       fetchAuditLogs(auditPage)
     }
   }, [activeTab, auditPage])
-
-  const fetchSettings = async () => {
-    try {
-      const res = await fetch("/api/settings")
-      if (res.ok) {
-        const data = await res.json()
-        setFormData(data.settings)
-      }
-    } catch (e) {
-      toast.error("Failed to load settings")
-    } finally {
-      setLoading(false)
-    }
-  }
 
   const fetchDepartments = async () => {
     try {
@@ -142,7 +140,7 @@ export default function SettingsPage() {
   }
 
   return (
-    <div className="space-y-6 max-w-6xl mx-auto">
+    <div className="max-w-7xl mx-auto space-y-6 animate-in-fade">
       <PageHeader
         title="Settings"
         description="Configure your HR portal settings and system preferences"
@@ -326,6 +324,53 @@ export default function SettingsPage() {
                     />
                     <span className="text-[13px] font-medium text-slate-500">min</span>
                   </div>
+                </div>
+              </div>
+
+              {/* Location Tracking Section */}
+              <div className="pt-6 border-t border-slate-100 space-y-4">
+                <div className="flex items-center gap-2">
+                  <MapPin className="w-4 h-4 text-indigo-600" />
+                  <h4 className="text-[14px] font-semibold text-slate-900">Location Tracking Controls</h4>
+                </div>
+
+                <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
+                  <div>
+                    <p className="text-[13px] font-semibold text-slate-800">Enable Location Tracking</p>
+                    <p className="text-[11px] text-slate-500">Allow capturing employee GPS coordinates on clock-in and clock-out</p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={formData.enableLocationTracking || false}
+                    onChange={(e) => setFormData({ ...formData, enableLocationTracking: e.target.checked })}
+                    className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500"
+                  />
+                </div>
+
+                <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
+                  <div>
+                    <p className="text-[13px] font-semibold text-slate-800">Require Location For Clock-in</p>
+                    <p className="text-[11px] text-slate-500">Employees must grant location permission before clocking in</p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={formData.requireLocationForClockIn || false}
+                    onChange={(e) => setFormData({ ...formData, requireLocationForClockIn: e.target.checked })}
+                    className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500"
+                  />
+                </div>
+
+                <div className="flex items-center justify-between p-3 bg-slate-50 rounded-xl border border-slate-100">
+                  <div>
+                    <p className="text-[13px] font-semibold text-slate-800">Track Location During Work Day</p>
+                    <p className="text-[11px] text-slate-500">Periodic location pings while an employee is currently working</p>
+                  </div>
+                  <input
+                    type="checkbox"
+                    checked={formData.trackLocationDuringWork || false}
+                    onChange={(e) => setFormData({ ...formData, trackLocationDuringWork: e.target.checked })}
+                    className="w-4 h-4 text-indigo-600 rounded border-slate-300 focus:ring-indigo-500"
+                  />
                 </div>
               </div>
             </div>

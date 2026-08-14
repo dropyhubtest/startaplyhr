@@ -78,7 +78,29 @@ export async function POST(request: Request) {
   }
 
   const body = await request.json()
-  const { name, email, phone, jobTitle, dateOfJoining, salary, password } = body
+  const {
+    name,
+    email,
+    phone,
+    department = "Engineering",
+    jobTitle,
+    dateOfJoining,
+    salary,
+    password,
+    // Personal Info
+    dateOfBirth,
+    gender,
+    maritalStatus,
+    nationality = "Indian",
+    bloodGroup,
+    personalEmail,
+    alternatePhone,
+    languagesKnown,
+    // Address
+    address: addressBody,
+    // Emergency Contact
+    emergencyContact: emergencyBody,
+  } = body
 
   if (!name || !email || !jobTitle || !dateOfJoining || !password) {
     return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
@@ -111,13 +133,22 @@ export async function POST(request: Request) {
       email,
       password: hashedPassword,
       phone: phone || null,
-      department: "General",
+      department: department || "Engineering",
       jobTitle,
       dateOfJoining: new Date(dateOfJoining),
       salary: salary ? parseFloat(salary) : null,
       role: "EMPLOYEE",
       isActive: true,
       isFirstLogin: true,
+      // Personal info
+      dateOfBirth: dateOfBirth ? new Date(dateOfBirth) : null,
+      gender: gender || null,
+      maritalStatus: maritalStatus || null,
+      nationality: nationality || "Indian",
+      bloodGroup: bloodGroup || null,
+      personalEmail: personalEmail || null,
+      alternatePhone: alternatePhone || null,
+      languagesKnown: languagesKnown || null,
     },
     select: {
       id: true,
@@ -131,6 +162,7 @@ export async function POST(request: Request) {
     }
   })
 
+  // Create Leave Balance
   await prisma.leaveBalance.create({
     data: {
       userId: employee.id,
@@ -145,6 +177,45 @@ export async function POST(request: Request) {
       usedWFH: 0,
     }
   })
+
+  // Create Address if provided
+  if (addressBody && (addressBody.currentStreet || addressBody.currentCity)) {
+    const same = !!addressBody.sameAsCurrent
+    await prisma.employeeAddress.create({
+      data: {
+        userId: employee.id,
+        currentStreet: addressBody.currentStreet || null,
+        currentCity: addressBody.currentCity || null,
+        currentState: addressBody.currentState || null,
+        currentCountry: addressBody.currentCountry || "India",
+        currentZipCode: addressBody.currentZipCode || null,
+        currentLandmark: addressBody.currentLandmark || null,
+        sameAsCurrent: same,
+        permanentStreet: same ? addressBody.currentStreet || null : addressBody.permanentStreet || null,
+        permanentCity: same ? addressBody.currentCity || null : addressBody.permanentCity || null,
+        permanentState: same ? addressBody.currentState || null : addressBody.permanentState || null,
+        permanentCountry: same ? addressBody.currentCountry || "India" : addressBody.permanentCountry || "India",
+        permanentZipCode: same ? addressBody.currentZipCode || null : addressBody.permanentZipCode || null,
+        permanentLandmark: same ? addressBody.currentLandmark || null : addressBody.permanentLandmark || null,
+      }
+    })
+  }
+
+  // Create Emergency Contact if provided
+  if (emergencyBody && emergencyBody.name && emergencyBody.primaryPhone) {
+    await prisma.emergencyContact.create({
+      data: {
+        userId: employee.id,
+        name: emergencyBody.name.trim(),
+        relationship: emergencyBody.relationship || "OTHER",
+        primaryPhone: emergencyBody.primaryPhone.trim(),
+        secondaryPhone: emergencyBody.secondaryPhone ? emergencyBody.secondaryPhone.trim() : null,
+        email: emergencyBody.email ? emergencyBody.email.trim() : null,
+        address: emergencyBody.address ? emergencyBody.address.trim() : null,
+        notes: emergencyBody.notes ? emergencyBody.notes.trim() : null,
+      }
+    })
+  }
 
   await prisma.notification.create({
     data: {

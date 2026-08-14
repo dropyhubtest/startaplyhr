@@ -1,15 +1,18 @@
 "use client"
 
-import { useState, useEffect } from "react"
 import { useAuth } from "@/hooks/use-auth"
 import { useClockActions } from "@/hooks/use-clock-actions"
 import { PageHeader } from "@/components/shared/page-header"
 import { AnnouncementCard } from "@/components/shared/announcement-card"
 import { StatusBadge } from "@/components/shared/status-badge"
 import { Button } from "@/components/ui/button"
-import { Play, Square, Coffee, Loader2, Megaphone, CheckSquare, Clock } from "lucide-react"
+import { Play, Square, Coffee, Loader2, Megaphone, CheckSquare, Clock, Briefcase } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
+
+import { useTasks } from "@/hooks/queries/use-tasks"
+import { useAllLeaves } from "@/hooks/queries/use-leaves"
+import { useQuery } from "@tanstack/react-query"
 
 export default function EmployeeDashboardPage() {
   const router = useRouter()
@@ -26,43 +29,25 @@ export default function EmployeeDashboardPage() {
     handleClockOut,
   } = useClockActions()
 
-  const [recentAnnouncements, setRecentAnnouncements] = useState<any[]>([])
-  const [tasks, setTasks] = useState<any[]>([])
-  const [leaves, setLeaves] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
+  const { data: tasksData, isLoading: tasksLoading } = useTasks()
+  const { data: leavesData, isLoading: leavesLoading } = useAllLeaves()
+  const { data: annData, isLoading: annLoading } = useQuery({
+    queryKey: ["announcements", "limit-3"],
+    queryFn: () => fetch("/api/announcements?limit=3").then((r) => r.json()),
+    staleTime: 30 * 1000,
+  })
+  const { data: myJobsData } = useQuery({
+    queryKey: ["my-jobs", "dashboard-summary"],
+    queryFn: () => fetch("/api/jobs?limit=50").then((r) => r.json()),
+    staleTime: 60 * 1000,
+  })
 
-  useEffect(() => {
-    fetchDashboardData()
-  }, [])
-
-  const fetchDashboardData = async () => {
-    try {
-      const [annRes, tasksRes, leavesRes] = await Promise.all([
-        fetch("/api/announcements?limit=3"),
-        fetch("/api/tasks"),
-        fetch("/api/leaves")
-      ])
-      
-      if (annRes.ok) {
-        const data = await annRes.json()
-        setRecentAnnouncements(data.announcements || [])
-      }
-      
-      if (tasksRes.ok) {
-        const data = await tasksRes.json()
-        setTasks(data.tasks || [])
-      }
-      
-      if (leavesRes.ok) {
-        const data = await leavesRes.json()
-        setLeaves(data.leaves || [])
-      }
-    } catch (e) {
-      console.error(e)
-    } finally {
-      setLoading(false)
-    }
-  }
+  const tasks = tasksData?.tasks || []
+  const leaves = leavesData?.leaves || []
+  const recentAnnouncements = annData?.announcements || []
+  const myAssignedJobs = myJobsData?.jobs || []
+  const activeJobsCount = myAssignedJobs.filter((j: any) => j.status === "IN_PROGRESS" || j.status === "OPEN").length
+  const loading = tasksLoading || leavesLoading || annLoading
 
   const formatSeconds = (seconds: number) => {
     const h = Math.floor(seconds / 3600)
@@ -71,11 +56,11 @@ export default function EmployeeDashboardPage() {
     return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`
   }
 
-  const pendingTasks = tasks.filter(t => t.status !== "COMPLETED").slice(0, 4)
-  const approvedLeaves = leaves.filter(l => l.status === "APPROVED")
+  const pendingTasks = tasks.filter((t: any) => t.status !== "COMPLETED").slice(0, 4)
+  const approvedLeaves = leaves.filter((l: any) => l.status === "APPROVED")
 
   return (
-    <div className="space-y-6 max-w-6xl mx-auto">
+    <div className="max-w-7xl mx-auto space-y-6 animate-in-fade">
       <PageHeader
         title={`Welcome back, ${user?.name?.split(' ')?.[0] || 'there'}`}
         description="Here's a quick overview of your day."
@@ -217,13 +202,13 @@ export default function EmployeeDashboardPage() {
             <div className="bg-indigo-50 rounded-xl border border-indigo-100/50 p-4 text-center shadow-sm relative overflow-hidden group">
               <div className="absolute inset-0 bg-gradient-to-br from-indigo-100/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
               <p className="text-[11px] font-bold text-indigo-600 uppercase tracking-wider mb-1 relative z-10">Tasks Done</p>
-              <p className="text-[32px] font-black text-indigo-900 leading-none relative z-10">{tasks.filter(t => t.status === "COMPLETED").length}</p>
+              <p className="text-[32px] font-black text-indigo-900 leading-none relative z-10">{tasks.filter((t: any) => t.status === "COMPLETED").length}</p>
             </div>
             <div className="bg-emerald-50 rounded-xl border border-emerald-100/50 p-4 text-center shadow-sm relative overflow-hidden group">
               <div className="absolute inset-0 bg-gradient-to-br from-emerald-100/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity" />
               <p className="text-[11px] font-bold text-emerald-600 uppercase tracking-wider mb-1 relative z-10">Leaves Used</p>
               <p className="text-[32px] font-black text-emerald-900 leading-none relative z-10">
-                {approvedLeaves.reduce((sum, l) => {
+                {approvedLeaves.reduce((sum: number, l: any) => {
                   let count = 0
                   const current = new Date(l.startDate)
                   const end = new Date(l.endDate)
@@ -248,7 +233,7 @@ export default function EmployeeDashboardPage() {
               ) : recentAnnouncements.length === 0 ? (
                 <p className="text-[13px] font-medium text-slate-500 text-center p-8 border border-dashed border-slate-200 rounded-lg">No recent announcements.</p>
               ) : (
-                recentAnnouncements.map(ann => (
+                recentAnnouncements.map((ann: any) => (
                   <AnnouncementCard key={ann.id} announcement={ann} isAdmin={false} />
                 ))
               )}

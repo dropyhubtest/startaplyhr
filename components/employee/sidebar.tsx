@@ -4,11 +4,12 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { signOut } from "next-auth/react"
 import { useAuth } from "@/hooks/use-auth"
+import { useQueryClient } from "@tanstack/react-query"
 import { cn, getInitials } from "@/lib/utils"
 import {
   LayoutDashboard, Clock, Calendar,
   CheckSquare, Megaphone, Bell,
-  User, LogOut, ChevronsUpDown, Sparkles,
+  User, LogOut, ChevronsUpDown, Sparkles, Briefcase,
 } from "lucide-react"
 
 interface SidebarProps {
@@ -21,6 +22,10 @@ const mainNav = [
   { label: "Attendance", href: "/employee/attendance", icon: Clock },
   { label: "Leaves", href: "/employee/leaves", icon: Calendar },
   { label: "Tasks", href: "/employee/tasks", icon: CheckSquare },
+]
+
+const recruitmentNav = [
+  { label: "My Jobs", href: "/employee/recruitment/jobs", icon: Briefcase },
 ]
 
 const communicationNav = [
@@ -37,6 +42,29 @@ export default function EmployeeSidebar({
 }: SidebarProps) {
   const pathname = usePathname()
   const { user } = useAuth()
+  const queryClient = useQueryClient()
+
+  const handleMouseEnter = (href: string) => {
+    if (href === "/employee/tasks") {
+      queryClient.prefetchQuery({
+        queryKey: ["tasks", undefined],
+        queryFn: () => fetch("/api/tasks?limit=100").then((r) => r.json()),
+        staleTime: 30 * 1000,
+      })
+    } else if (href === "/employee/leaves") {
+      queryClient.prefetchQuery({
+        queryKey: ["leaves", "balance"],
+        queryFn: () => fetch("/api/leaves/balance").then((r) => r.json()),
+        staleTime: 60 * 1000,
+      })
+    } else if (href === "/employee/notifications") {
+      queryClient.prefetchQuery({
+        queryKey: ["notifications"],
+        queryFn: () => fetch("/api/notifications").then((r) => r.json()),
+        staleTime: 15 * 1000,
+      })
+    }
+  }
 
   const NavItem = ({ item }: { item: typeof mainNav[0] }) => {
     const isActive = pathname === item.href || 
@@ -44,6 +72,8 @@ export default function EmployeeSidebar({
     return (
       <Link
         href={item.href}
+        prefetch={true}
+        onMouseEnter={() => handleMouseEnter(item.href)}
         onClick={onClose}
         className={cn(
           "relative flex items-center gap-2.5 px-3 py-2 " +
@@ -101,33 +131,14 @@ export default function EmployeeSidebar({
       )}>
         
         {/* Logo */}
-        <div className="h-16 flex items-center px-5 
-          border-b border-slate-100">
-          <Link href="/employee/dashboard" 
-            className="flex items-center gap-2.5 group">
-            <div className="relative">
-              <div className="w-8 h-8 rounded-lg 
-                bg-gradient-to-br from-indigo-600 
-                via-blue-600 to-indigo-700
-                flex items-center justify-center 
-                shadow-md shadow-indigo-500/30">
-                <Sparkles className="w-4 h-4 text-white" 
-                  strokeWidth={2.5} />
-              </div>
-              <div className="absolute inset-0 rounded-lg 
-                bg-gradient-to-br from-indigo-500 to-blue-600 
-                blur-md opacity-30 -z-10" />
-            </div>
-            <div>
-              <p className="text-[14.5px] font-semibold 
-                text-slate-900 tracking-tight leading-none">
-                Startaply
-              </p>
-              <p className="text-[10.5px] text-slate-500 
-                mt-0.5 leading-none">
-                Employee Portal
-              </p>
-            </div>
+        <div className="h-16 flex items-center px-6 border-b border-slate-100">
+          <Link href="/employee/dashboard" className="flex flex-col group cursor-pointer">
+            <p className="text-[17px] font-extrabold text-slate-900 tracking-tight leading-none group-hover:text-indigo-600 transition-colors">
+              Startaply
+            </p>
+            <p className="text-[10px] text-slate-400 mt-1 leading-none font-bold tracking-widest uppercase">
+              Employee Portal
+            </p>
           </Link>
         </div>
 
@@ -135,6 +146,13 @@ export default function EmployeeSidebar({
         <nav className="flex-1 overflow-y-auto py-3 px-2.5">
           <div className="space-y-0.5">
             {mainNav.map(item => (
+              <NavItem key={item.href} item={item} />
+            ))}
+          </div>
+
+          <SectionLabel>Recruitment</SectionLabel>
+          <div className="space-y-0.5">
+            {recruitmentNav.map(item => (
               <NavItem key={item.href} item={item} />
             ))}
           </div>

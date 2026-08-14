@@ -12,45 +12,44 @@ export const authOptions: NextAuthOptions = {
         password: { label: "Password", type: "password" },
       },
       async authorize(credentials) {
-        if (!credentials?.email || !credentials?.password) {
-          throw new Error("Email and password are required")
-        }
+        try {
+          if (!credentials?.email || !credentials?.password) {
+            return null
+          }
 
-        console.log(`🔑 Login Attempt: [${normalizedEmail}]`)
+          const normalizedEmail = credentials.email.toLowerCase().trim()
 
-        const user = await prisma.user.findUnique({
-          where: { email: normalizedEmail },
-        })
+          const user = await prisma.user.findUnique({
+            where: { email: normalizedEmail },
+          })
 
-        if (!user) {
-          console.log(`❌ Login Failed: User not found for [${normalizedEmail}]`)
+          if (!user || !user.isActive) {
+            return null
+          }
+
+          const isValid = await bcrypt.compare(
+            credentials.password,
+            user.password
+          )
+
+          if (!isValid) {
+            return null
+          }
+
+          return {
+            id: user.id,
+            email: user.email,
+            name: user.name,
+            role: user.role,
+            employeeId: user.employeeId,
+            department: user.department,
+            jobTitle: user.jobTitle,
+            profilePhoto: user.profilePhoto,
+            isFirstLogin: user.isFirstLogin ?? false,
+          }
+        } catch (error) {
+          console.error("[AUTH] Login failed:", error)
           return null
-        }
-
-        if (!user.isActive) {
-          console.log(`❌ Login Failed: Account inactive for [${normalizedEmail}]`)
-          throw new Error("Account is inactive. Please contact HR.")
-        }
-
-        const isPasswordValid = await bcrypt.compare(credentials.password, user.password)
-
-        if (!isPasswordValid) {
-          console.log(`❌ Login Failed: Password mismatch for [${normalizedEmail}]`)
-          return null
-        }
-
-        console.log(`✅ Login Successful: [${normalizedEmail}] (${user.role})`)
-
-        return {
-          id: user.id,
-          email: user.email,
-          name: user.name,
-          role: user.role,
-          employeeId: user.employeeId,
-          department: user.department,
-          jobTitle: user.jobTitle,
-          profilePhoto: user.profilePhoto,
-          isFirstLogin: user.isFirstLogin,
         }
       },
     }),
@@ -74,7 +73,7 @@ export const authOptions: NextAuthOptions = {
       if (trigger === "update") {
         const dbUser = await prisma.user.findUnique({
           where: { id: token.id as string },
-          select: { isFirstLogin: true, name: true, profilePhoto: true }
+          select: { isFirstLogin: true, name: true, profilePhoto: true },
         })
         if (dbUser) {
           token.isFirstLogin = dbUser.isFirstLogin
@@ -86,10 +85,10 @@ export const authOptions: NextAuthOptions = {
     },
     async session({ session, token }) {
       if (session.user) {
-        session.user.id = token.id as string;
-        session.user.role = token.role as string;
-        session.user.employeeId = token.employeeId as string;
-        session.user.isFirstLogin = token.isFirstLogin as boolean;
+        session.user.id = token.id as string
+        session.user.role = token.role as string
+        session.user.employeeId = token.employeeId as string
+        session.user.isFirstLogin = token.isFirstLogin as boolean
       }
       return session
     },

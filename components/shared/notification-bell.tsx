@@ -61,7 +61,7 @@ export function NotificationBell() {
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger>
+      <PopoverTrigger suppressHydrationWarning>
         <div className="relative p-2 rounded-full hover:bg-gray-100 transition-colors outline-none cursor-pointer">
           <Bell className="w-5 h-5 text-gray-600" />
           {unreadCount > 0 && (

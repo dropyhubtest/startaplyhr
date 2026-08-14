@@ -33,6 +33,21 @@ export async function GET(
       dateOfJoining: true,
       role: true,
       createdAt: true,
+      // Personal info
+      dateOfBirth: true,
+      gender: true,
+      maritalStatus: true,
+      nationality: true,
+      bloodGroup: true,
+      personalEmail: true,
+      alternatePhone: true,
+      languagesKnown: true,
+      // Relations
+      address: true,
+      emergencyContact: true,
+      assetsAssigned: {
+        orderBy: { createdAt: "desc" },
+      },
     }
   })
 

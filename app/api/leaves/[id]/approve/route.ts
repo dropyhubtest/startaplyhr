@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import prisma from "@/lib/prisma"
+import { sendNotification } from "@/lib/utils"
 
 // PUT /api/leaves/[id]/approve
 // Admin only
@@ -63,16 +64,21 @@ export async function PUT(
     })
   }
 
-  // Notify employee
-  await prisma.notification.create({
-    data: {
-      userId: leave.userId,
-      title: "Leave Approved ✅",
-      message: `Your ${leave.leaveType.toLowerCase()} leave request for ${leave.totalDays} day(s) has been approved`,
-      type: "LEAVE_APPROVED",
-      isRead: false,
-    }
-  })
+  // Notify employee (Batman)
+  sendNotification(
+    leave.userId,
+    "Leave Approved ✅",
+    `Your ${leave.leaveType.toLowerCase()} leave request for ${leave.totalDays} day(s) has been approved.`,
+    "LEAVE_APPROVED"
+  ).catch(() => {})
+
+  // Notify admin
+  sendNotification(
+    session.user.id,
+    "Leave Approved",
+    `You approved ${leave.user.name}'s ${leave.leaveType.toLowerCase()} leave request for ${leave.totalDays} day(s).`,
+    "LEAVE_APPROVED"
+  ).catch(() => {})
 
   // Audit log
   await prisma.auditLog.create({
@@ -82,20 +88,6 @@ export async function PUT(
       details: `Approved leave for ${leave.user.name}: ${leave.totalDays} days ${leave.leaveType}`,
     }
   })
-
-  // Pusher to employee
-  try {
-    const { pusher } = await import("@/lib/pusher")
-    await pusher.trigger(
-      `employee-${leave.userId}`,
-      "new-notification",
-      {
-        title: "Leave Approved ✅",
-        message: `Your ${leave.leaveType.toLowerCase()} leave has been approved`,
-        type: "LEAVE_APPROVED",
-      }
-    )
-  } catch (e) {}
 
   return NextResponse.json({ leave: updated })
 }

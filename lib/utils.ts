@@ -16,19 +16,31 @@ export function cn(...inputs: ClassValue[]) {
 }
 
 /**
- * Format date nicely
+ * Format date nicely with null/invalid guards
  */
-export function formatDate(date: Date | string, formatStr: string = "MMM dd, yyyy"): string {
-  const d = typeof date === "string" ? new Date(date) : date
-  return format(d, formatStr)
+export function formatDate(date: Date | string | null | undefined, formatStr: string = "MMM dd, yyyy"): string {
+  if (!date) return "N/A"
+  try {
+    const d = typeof date === "string" ? new Date(date) : date
+    if (isNaN(d.getTime())) return "N/A"
+    return format(d, formatStr)
+  } catch (e) {
+    return "N/A"
+  }
 }
 
 /**
- * Format time as HH:MM AM/PM
+ * Format time as HH:MM AM/PM with null/invalid guards
  */
-export function formatTime(date: Date | string): string {
-  const d = typeof date === "string" ? new Date(date) : date
-  return format(d, "hh:mm a")
+export function formatTime(date: Date | string | null | undefined): string {
+  if (!date) return "N/A"
+  try {
+    const d = typeof date === "string" ? new Date(date) : date
+    if (isNaN(d.getTime())) return "N/A"
+    return format(d, "hh:mm a")
+  } catch (e) {
+    return "N/A"
+  }
 }
 
 /**
@@ -198,14 +210,22 @@ export async function sendNotification(userId: string, title: string, message: s
     },
   })
   
-  // Also trigger pusher event
-  await triggerPusherEvent(`employee-${userId}`, "new-notification", notification)
+  // Non-blocking background pusher trigger
+  triggerPusherEvent(`employee-${userId}`, "new-notification", notification).catch(() => {})
   return notification
 }
 
 export async function triggerPusherEvent(channel: string, event: string, data: any) {
+  const key = process.env.PUSHER_KEY || process.env.NEXT_PUBLIC_PUSHER_KEY || ""
+  if (!key || key.includes("placeholder") || key.includes("your-pusher-key")) {
+    return
+  }
+
   try {
-    await pusher.trigger(channel, event, data)
+    await Promise.race([
+      pusher.trigger(channel, event, data),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("Pusher timeout")), 1500))
+    ])
   } catch (error) {
     console.error("Pusher trigger error:", error)
   }

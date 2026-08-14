@@ -113,6 +113,12 @@ async function main() {
   console.log("\n📋 Login Credentials:")
   console.log("  Admin:    admin@startaply.com / Admin@123")
   console.log("  Employee: batman@gmail.com / Batman@123")
+
+  const testUser = await prisma.user.findUnique({
+    where: { email: "admin@startaply.com" }
+  })
+  const testMatch = await bcrypt.compare("Admin@123", testUser!.password)
+  console.log("\n🧪 Verification: password matches after seed:", testMatch)
 }
 
 main()

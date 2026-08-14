@@ -11,9 +11,9 @@ import { Switch } from "@/components/ui/switch"
 import { toast } from "sonner"
 import { Send, Loader2, Megaphone } from "lucide-react"
 
+import { useQuery, useQueryClient } from "@tanstack/react-query"
+
 export default function AdminAnnouncementsPage() {
-  const [announcements, setAnnouncements] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [deletingId, setDeletingId] = useState<string | null>(null)
   
@@ -22,23 +22,19 @@ export default function AdminAnnouncementsPage() {
   const [isUrgent, setIsUrgent] = useState(false)
   const [preview, setPreview] = useState(false)
 
-  useEffect(() => {
-    fetchAnnouncements()
-  }, [])
-
-  const fetchAnnouncements = async () => {
-    try {
+  const { data: annQueryData, isLoading: loading } = useQuery({
+    queryKey: ["announcements"],
+    queryFn: async () => {
       const res = await fetch("/api/announcements")
-      const data = await res.json()
-      if (res.ok) {
-        setAnnouncements(data.announcements)
-      }
-    } catch (e) {
-      toast.error("Failed to load announcements")
-    } finally {
-      setLoading(false)
-    }
-  }
+      if (!res.ok) throw new Error("Failed to load announcements")
+      return res.json()
+    },
+    staleTime: 5 * 60 * 1000,
+  })
+
+  const announcements = annQueryData?.announcements || []
+
+  const queryClient = useQueryClient()
 
   const handlePost = async () => {
     setIsSubmitting(true)
@@ -50,7 +46,7 @@ export default function AdminAnnouncementsPage() {
       })
       const data = await res.json()
       if (res.ok) {
-        setAnnouncements([data.announcement, ...announcements])
+        queryClient.invalidateQueries({ queryKey: ["announcements"] })
         setTitle("")
         setContent("")
         setIsUrgent(false)
@@ -76,7 +72,7 @@ export default function AdminAnnouncementsPage() {
         method: "DELETE"
       })
       if (res.ok) {
-        setAnnouncements(prev => prev.filter(a => a.id !== deletingId))
+        queryClient.invalidateQueries({ queryKey: ["announcements"] })
         toast.success("Announcement deleted")
       } else {
         toast.error("Failed to delete")
@@ -89,7 +85,7 @@ export default function AdminAnnouncementsPage() {
   }
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
+    <div className="max-w-7xl mx-auto space-y-6 animate-in-fade">
       <PageHeader
         title="Announcements"
         description="Post updates and news to your team"
@@ -198,7 +194,7 @@ export default function AdminAnnouncementsPage() {
             />
           ) : (
             <div className="space-y-4 animate-fade-in">
-              {announcements.map(ann => (
+              {announcements.map((ann: any) => (
                 <AnnouncementCard 
                   key={ann.id} 
                   announcement={ann}

@@ -7,40 +7,33 @@ import { TaskDetailModal } from "@/components/admin/task-detail-modal"
 import { toast } from "sonner"
 import { Loader2, CheckSquare, AlertCircle } from "lucide-react"
 import { cn } from "@/lib/utils"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 
 export default function EmployeeTasksPage() {
-  const [tasks, setTasks] = useState<any[]>([])
-  const [loading, setLoading] = useState(true)
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null)
+  const queryClient = useQueryClient()
 
-  const fetchTasks = useCallback(async () => {
-    setLoading(true)
-    try {
+  const { data: tasksQueryData, isLoading: loading } = useQuery({
+    queryKey: ["my-tasks"],
+    queryFn: async () => {
       const res = await fetch("/api/tasks?limit=100")
-      if (res.ok) {
-        const data = await res.json()
-        setTasks(data.tasks)
-      }
-    } catch (e) {
-      toast.error("Failed to load tasks")
-    } finally {
-      setLoading(false)
-    }
-  }, [])
+      if (!res.ok) throw new Error("Failed to load tasks")
+      return res.json()
+    },
+    staleTime: 5 * 60 * 1000,
+  })
 
-  useEffect(() => {
-    fetchTasks()
-  }, [fetchTasks])
+  const tasks = tasksQueryData?.tasks || []
 
   const handleTaskUpdate = (updatedTask: any) => {
-    setTasks(prev => prev.map(t => t.id === updatedTask.id ? { ...t, ...updatedTask } : t))
+    queryClient.setQueryData(["my-tasks"], (old: any) => ({
+      ...old,
+      tasks: old.tasks.map((t: any) => (t.id === updatedTask.id ? { ...t, ...updatedTask } : t))
+    }))
   }
 
   const handleStatusChange = async (taskId: string, newStatus: string) => {
     try {
-      // Optimistic update
-      setTasks(prev => prev.map(t => t.id === taskId ? { ...t, status: newStatus } : t))
-      
       const res = await fetch(`/api/tasks/${taskId}`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
@@ -49,18 +42,17 @@ export default function EmployeeTasksPage() {
       if (!res.ok) {
         throw new Error()
       }
+      queryClient.invalidateQueries({ queryKey: ["my-tasks"] })
     } catch (e) {
       toast.error("Failed to update task status")
-      // Revert optimistic update by refetching
-      fetchTasks()
     }
   }
 
   // Group tasks for Board View (3 columns for employee)
   const groupedTasks = {
-    TODO: tasks.filter(t => t.status === "TODO"),
-    INPROGRESS: tasks.filter(t => t.status === "INPROGRESS"),
-    COMPLETED: tasks.filter(t => t.status === "COMPLETED"),
+    TODO: tasks.filter((t: any) => t.status === "TODO"),
+    INPROGRESS: tasks.filter((t: any) => t.status === "INPROGRESS"),
+    COMPLETED: tasks.filter((t: any) => t.status === "COMPLETED"),
   }
 
   const columns = [
@@ -69,12 +61,12 @@ export default function EmployeeTasksPage() {
     { id: "COMPLETED", title: "Completed", tasks: groupedTasks.COMPLETED, color: "bg-emerald-50/50 border-emerald-100", headerBg: "bg-gradient-to-r from-emerald-100/50 to-green-50/50", dot: "bg-emerald-500" },
   ]
 
-  const overdueCount = tasks.filter(t => 
+  const overdueCount = tasks.filter((t: any) => 
     t.deadline && new Date(t.deadline) < new Date() && t.status !== "COMPLETED"
   ).length
 
   return (
-    <div className="space-y-6 h-full flex flex-col max-w-7xl mx-auto">
+    <div className="space-y-6 h-full flex flex-col max-w-7xl mx-auto animate-in-fade">
       <PageHeader
         title="My Tasks"
         description="Manage and track your assigned work"
@@ -122,7 +114,7 @@ export default function EmployeeTasksPage() {
                 </div>
                 
                 <div className="p-3 flex-1 overflow-y-auto flex flex-col gap-3 custom-scrollbar">
-                  {col.tasks.map(task => (
+                  {col.tasks.map((task: any) => (
                     <TaskCard 
                       key={task.id} 
                       task={task} 

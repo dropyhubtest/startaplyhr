@@ -15,18 +15,43 @@ import {
   Loader2, Info, CalendarDays 
 } from "lucide-react"
 
+import { useQuery, useQueryClient } from "@tanstack/react-query"
+
+import { ConfirmModal } from "@/components/ui-v2/confirm-modal"
+
 export default function EmployeeLeavesPage() {
-  const [balance, setBalance] = useState<any>(null)
-  const [remaining, setRemaining] = useState<any>(null)
-  const [leaves, setLeaves] = useState<any[]>([])
-  const [pagination, setPagination] = useState<any>(null)
-  const [loading, setLoading] = useState(true)
-  const [balanceLoading, setBalanceLoading] = useState(true)
+  const queryClient = useQueryClient()
   const [statusFilter, setStatusFilter] = useState("")
   const [currentPage, setCurrentPage] = useState(1)
   const [showApplyForm, setShowApplyForm] = useState(false)
   const [cancellingId, setCancellingId] = useState<string | null>(null)
+  const [cancellingTargetId, setCancellingTargetId] = useState<string | null>(null)
   const [isSubmitting, setIsSubmitting] = useState(false)
+
+  const { data: myLeavesQueryData, isLoading: loading } = useQuery({
+    queryKey: ["my-leaves"],
+    queryFn: async () => {
+      const res = await fetch("/api/leaves")
+      if (!res.ok) throw new Error("Failed to fetch leaves")
+      return res.json()
+    },
+    staleTime: 5 * 60 * 1000,
+  })
+
+  const { data: balanceQueryData, isLoading: balanceLoading } = useQuery({
+    queryKey: ["leaves", "balance"],
+    queryFn: async () => {
+      const res = await fetch("/api/leaves/balance")
+      if (!res.ok) throw new Error("Failed to fetch balance")
+      return res.json()
+    },
+    staleTime: 5 * 60 * 1000,
+  })
+
+  const leaves = myLeavesQueryData?.leaves || []
+  const pagination = myLeavesQueryData?.pagination
+  const balance = balanceQueryData?.balance
+  const remaining = balanceQueryData?.remaining
 
   const { register, handleSubmit, control, watch, reset, formState: { errors } } = useForm()
 
@@ -34,58 +59,16 @@ export default function EmployeeLeavesPage() {
   const watchEndDate = watch("endDate")
   const watchLeaveType = watch("leaveType")
 
-  const fetchBalance = useCallback(async () => {
+  const handleConfirmCancelLeave = async () => {
+    if (!cancellingTargetId) return
+    setCancellingId(cancellingTargetId)
     try {
-      const res = await fetch("/api/leaves/balance")
-      if (res.ok) {
-        const data = await res.json()
-        setBalance(data.balance)
-        setRemaining(data.remaining)
-      }
-    } catch (e) {
-      toast.error("Failed to load leave balance")
-    } finally {
-      setBalanceLoading(false)
-    }
-  }, [])
-
-  const fetchLeaves = useCallback(async () => {
-    setLoading(true)
-    try {
-      const params = new URLSearchParams({
-        page: String(currentPage),
-        limit: "10",
-        status: statusFilter
-      })
-      const res = await fetch(`/api/leaves?${params}`)
-      if (res.ok) {
-        const data = await res.json()
-        setLeaves(data.leaves)
-        setPagination(data.pagination)
-      }
-    } catch (e) {
-      toast.error("Failed to load leaves")
-    } finally {
-      setLoading(false)
-    }
-  }, [currentPage, statusFilter])
-
-  useEffect(() => {
-    fetchBalance()
-  }, [fetchBalance])
-
-  useEffect(() => {
-    fetchLeaves()
-  }, [fetchLeaves])
-
-  const handleCancel = async (id: string) => {
-    if (!confirm("Are you sure you want to cancel this leave request?")) return
-    setCancellingId(id)
-    try {
-      const res = await fetch(`/api/leaves/${id}`, { method: "DELETE" })
+      const res = await fetch(`/api/leaves/${cancellingTargetId}`, { method: "DELETE" })
       if (res.ok) {
         toast.success("Leave request cancelled")
-        fetchLeaves()
+        queryClient.refetchQueries({ queryKey: ["my-leaves"] })
+        queryClient.refetchQueries({ queryKey: ["leaves", "balance"] })
+        setCancellingTargetId(null)
       } else {
         const data = await res.json()
         toast.error(data.error || "Failed to cancel")
@@ -110,8 +93,8 @@ export default function EmployeeLeavesPage() {
         toast.success("Leave request submitted!")
         setShowApplyForm(false)
         reset()
-        fetchLeaves()
-        fetchBalance()
+        queryClient.refetchQueries({ queryKey: ["my-leaves"] })
+        queryClient.refetchQueries({ queryKey: ["leaves", "balance"] })
       } else {
         toast.error(result.error)
       }
@@ -169,7 +152,7 @@ export default function EmployeeLeavesPage() {
   }
 
   return (
-    <div className="space-y-6 max-w-6xl mx-auto">
+    <div className="max-w-7xl mx-auto space-y-6 animate-in-fade">
       <PageHeader
         title="My Leaves"
         description="View your leave balances and request time off"
@@ -409,7 +392,7 @@ export default function EmployeeLeavesPage() {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {leaves.map((leave) => (
+                {leaves.map((leave: any) => (
                   <tr key={leave.id} className="hover:bg-slate-50/50 transition-colors">
                     <td className="px-6 py-4">
                       <span className={cn(
@@ -440,13 +423,15 @@ export default function EmployeeLeavesPage() {
                     <td className="px-6 py-4">
                       <StatusBadge status={leave.status} size="sm" />
                     </td>
-                    <td className="px-6 py-4 max-w-[200px] truncate">
+                    <td className="px-6 py-4 max-w-[260px] min-w-[180px]">
                       <TooltipProvider>
                         <Tooltip>
-                          <TooltipTrigger>
-                            <span className="cursor-help text-[13px] text-slate-600 truncate block font-medium hover:text-slate-900">{leave.reason}</span>
+                          <TooltipTrigger className="text-left w-full">
+                            <span className="cursor-help text-[13px] text-slate-700 font-medium hover:text-slate-900 line-clamp-2 leading-snug whitespace-pre-wrap block">
+                              {leave.reason}
+                            </span>
                           </TooltipTrigger>
-                          <TooltipContent className="max-w-xs whitespace-normal bg-slate-900 text-white border-slate-800 text-[12px] font-medium p-3 rounded-lg shadow-xl">
+                          <TooltipContent className="max-w-xs whitespace-pre-wrap bg-slate-900 text-white border-slate-800 text-[12px] font-medium p-3 rounded-lg shadow-xl leading-relaxed">
                             <p>{leave.reason}</p>
                           </TooltipContent>
                         </Tooltip>
@@ -456,7 +441,7 @@ export default function EmployeeLeavesPage() {
                       <div className="flex items-center justify-end gap-2">
                         {leave.status === "PENDING" && (
                           <button 
-                            onClick={() => handleCancel(leave.id)}
+                            onClick={() => setCancellingTargetId(leave.id)}
                             className="inline-flex items-center justify-center gap-1.5 h-8 px-3 rounded-md bg-white border border-rose-200 hover:bg-rose-50 text-rose-600 text-[12px] font-bold shadow-sm transition-all disabled:opacity-50"
                             disabled={cancellingId === leave.id}
                           >
@@ -512,6 +497,18 @@ export default function EmployeeLeavesPage() {
           </div>
         )}
       </div>
+
+      {/* CANCEL LEAVE CONFIRM MODAL */}
+      <ConfirmModal
+        open={Boolean(cancellingTargetId)}
+        onClose={() => setCancellingTargetId(null)}
+        onConfirm={handleConfirmCancelLeave}
+        title="Cancel Leave Request?"
+        description="Are you sure you want to cancel this pending leave request?"
+        confirmText="Cancel Leave"
+        variant="destructive"
+        loading={Boolean(cancellingId)}
+      />
     </div>
   )
 }

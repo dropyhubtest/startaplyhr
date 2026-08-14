@@ -7,7 +7,7 @@ import { useAuth } from "./use-auth"
 
 export function useNotifications() {
   const store = useNotificationStore()
-  const { user } = useAuth()
+  const { user, isAuthenticated } = useAuth()
 
   // Fetch notifications on mount
   useEffect(() => {
@@ -17,16 +17,18 @@ export function useNotifications() {
         if (res.ok) {
           const data = await res.json()
           store.setNotifications(data.notifications || [])
+        } else if (res.status === 401) {
+          store.setNotifications([])
         }
       } catch (error) {
-        console.error("Failed to fetch notifications:", error)
+        // Silent catch for network transitions
       }
     }
 
-    if (user?.id) {
+    if (isAuthenticated && user?.id) {
       fetchNotifications()
     }
-  }, [user?.id])
+  }, [isAuthenticated, user?.id])
 
   // Subscribe to Pusher for real time
   useEffect(() => {

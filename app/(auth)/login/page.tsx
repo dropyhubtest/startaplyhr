@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { signIn, getSession } from "next-auth/react"
 import { useForm } from "react-hook-form"
@@ -30,6 +30,18 @@ export default function LoginPage() {
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
 
+  useEffect(() => {
+    // Warm up routes in background while user fills login form
+    router.prefetch("/admin/dashboard")
+    router.prefetch("/employee/dashboard")
+    router.prefetch("/employee/attendance")
+    router.prefetch("/employee/tasks")
+    router.prefetch("/employee/leaves")
+    router.prefetch("/employee/profile")
+    router.prefetch("/admin/employees")
+    router.prefetch("/admin/attendance")
+  }, [router])
+
   const {
     register,
     handleSubmit,
@@ -41,6 +53,13 @@ export default function LoginPage() {
   const onSubmit = async (data: LoginFormData) => {
     setIsLoading(true)
     setError("")
+
+    // Initiate background warm-up requests for fast load
+    fetch("/api/admin/dashboard/stats").catch(() => {})
+    fetch("/api/admin/dashboard/live-status").catch(() => {})
+    fetch("/api/announcements?limit=3").catch(() => {})
+    fetch("/api/tasks").catch(() => {})
+    fetch("/api/leaves").catch(() => {})
 
     try {
       const result = await signIn("credentials", {

@@ -21,6 +21,8 @@ interface TaskDetailModalProps {
   onDelete?: (taskId: string) => void
 }
 
+import { ConfirmModal } from "@/components/ui-v2/confirm-modal"
+
 export function TaskDetailModal({ taskId, onClose, onUpdate, onDelete }: TaskDetailModalProps) {
   const { data: session } = useSession()
   const isAdmin = session?.user?.role === "ADMIN"
@@ -29,6 +31,8 @@ export function TaskDetailModal({ taskId, onClose, onUpdate, onDelete }: TaskDet
   const [loading, setLoading] = useState(true)
   const [commentText, setCommentText] = useState("")
   const [isCommenting, setIsCommenting] = useState(false)
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
+  const [deleting, setDeleting] = useState(false)
   
   const commentsEndRef = useRef<HTMLDivElement>(null)
 
@@ -85,13 +89,13 @@ export function TaskDetailModal({ taskId, onClose, onUpdate, onDelete }: TaskDet
 
   const handleDelete = async () => {
     if (!isAdmin || !onDelete) return
-    if (!confirm("Are you sure you want to delete this task?")) return
     
     try {
       const res = await fetch(`/api/tasks/${task.id}`, { method: "DELETE" })
       if (res.ok) {
         toast.success("Task deleted")
         onDelete(task.id)
+        setShowDeleteConfirm(false)
         onClose()
       } else {
         toast.error("Failed to delete task")
@@ -184,7 +188,7 @@ export function TaskDetailModal({ taskId, onClose, onUpdate, onDelete }: TaskDet
                     <TooltipProvider>
                       <Tooltip>
                         <TooltipTrigger>
-                          <Button variant="outline" size="icon" className="h-9 w-9 text-red-500 hover:text-red-700 hover:bg-red-50 border-red-200" onClick={handleDelete}>
+                          <Button variant="outline" size="icon" className="h-9 w-9 text-red-500 hover:text-red-700 hover:bg-red-50 border-red-200" onClick={() => setShowDeleteConfirm(true)}>
                             <Trash2 className="w-4 h-4" />
                           </Button>
                         </TooltipTrigger>
@@ -323,6 +327,17 @@ export function TaskDetailModal({ taskId, onClose, onUpdate, onDelete }: TaskDet
           </>
         )}
       </DialogContent>
+
+      <ConfirmModal
+        open={showDeleteConfirm}
+        onClose={() => setShowDeleteConfirm(false)}
+        onConfirm={handleDelete}
+        title="Delete Task?"
+        description="Are you sure you want to permanently delete this task?"
+        confirmText="Delete Task"
+        variant="destructive"
+        loading={deleting}
+      />
     </Dialog>
   )
 }

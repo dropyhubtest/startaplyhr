@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import prisma from "@/lib/prisma"
+import { sendNotification } from "@/lib/utils"
 
 // GET /api/tasks
 // Admin: all tasks with filters
@@ -128,43 +129,21 @@ export async function POST(request: Request) {
     }
   })
 
-  // Notify employee
-  await prisma.notification.create({
-    data: {
-      userId: assignedToId,
-      title: "New Task Assigned 📋",
-      message: `You have been assigned: "${title}"${
-        deadline 
-          ? ` - Due ${new Date(deadline).toLocaleDateString()}` 
-          : ""
-      }`,
-      type: "TASK_ASSIGNED",
-      isRead: false,
-    }
-  })
+  // Notify assigned employee
+  sendNotification(
+    assignedToId,
+    "New Task Assigned 📋",
+    `You have been assigned: "${title}"${deadline ? ` - Due ${new Date(deadline).toLocaleDateString()}` : ""}`,
+    "TASK_ASSIGNED"
+  ).catch(() => {})
 
-  // Audit log
-  await prisma.auditLog.create({
-    data: {
-      userId: session.user.id,
-      action: "TASK_CREATED",
-      details: `Created task "${title}" assigned to ${assignee.name}`,
-    }
-  })
-
-  // Pusher
-  try {
-    const { pusher } = await import("@/lib/pusher")
-    await pusher.trigger(
-      `employee-${assignedToId}`,
-      "new-notification",
-      {
-        title: "New Task Assigned 📋",
-        message: `You have a new task: "${title}"`,
-        type: "TASK_ASSIGNED",
-      }
-    )
-  } catch (e) {}
+  // Notify creating admin
+  sendNotification(
+    session.user.id,
+    "Task Created 📋",
+    `Task "${title}" created and assigned to ${assignee.name}.`,
+    "TASK_ASSIGNED"
+  ).catch(() => {})
 
   return NextResponse.json({ task }, { status: 201 })
 }

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import prisma from "@/lib/prisma"
+import { sendNotification } from "@/lib/utils"
 
 // PUT /api/leaves/[id]/reject
 // Admin only - requires reason
@@ -56,16 +57,21 @@ export async function PUT(
     }
   })
 
-  // Notify employee
-  await prisma.notification.create({
-    data: {
-      userId: leave.userId,
-      title: "Leave Rejected ❌",
-      message: `Your ${leave.leaveType.toLowerCase()} leave request was rejected. Reason: ${adminComment}`,
-      type: "LEAVE_REJECTED",
-      isRead: false,
-    }
-  })
+  // Notify employee (Batman)
+  sendNotification(
+    leave.userId,
+    "Leave Request Declined ❌",
+    `Your ${leave.leaveType.toLowerCase()} leave request was declined. Reason: ${adminComment}`,
+    "LEAVE_REJECTED"
+  ).catch(() => {})
+
+  // Notify admin
+  sendNotification(
+    session.user.id,
+    "Leave Request Declined",
+    `You declined ${leave.user.name}'s ${leave.leaveType.toLowerCase()} leave request.`,
+    "LEAVE_REJECTED"
+  ).catch(() => {})
 
   // Audit log
   await prisma.auditLog.create({
@@ -75,20 +81,6 @@ export async function PUT(
       details: `Rejected leave for ${leave.user.name}. Reason: ${adminComment}`,
     }
   })
-
-  // Pusher to employee
-  try {
-    const { pusher } = await import("@/lib/pusher")
-    await pusher.trigger(
-      `employee-${leave.userId}`,
-      "new-notification",
-      {
-        title: "Leave Rejected ❌",
-        message: `Your leave request was rejected: ${adminComment}`,
-        type: "LEAVE_REJECTED",
-      }
-    )
-  } catch (e) {}
 
   return NextResponse.json({ leave: updated })
 }

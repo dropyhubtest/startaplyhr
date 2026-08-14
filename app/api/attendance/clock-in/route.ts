@@ -2,11 +2,27 @@ import { NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { prisma } from "@/lib/prisma"
+import { reverseGeocode } from "@/lib/geocode"
+import { sendNotification } from "@/lib/utils"
 
 export async function POST(request: Request) {
   const session = await getServerSession(authOptions)
   if (!session || session.user.role !== "EMPLOYEE") {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+  }
+
+  // Parse optional location data from request body
+  let latitude: number | null = null
+  let longitude: number | null = null
+  let accuracy: number | null = null
+
+  try {
+    const body = await request.json()
+    latitude = body.latitude ?? null
+    longitude = body.longitude ?? null
+    accuracy = body.accuracy ?? null
+  } catch {
+    // No body or invalid JSON — location is optional
   }
 
   const now = new Date()
@@ -53,6 +69,22 @@ export async function POST(request: Request) {
   const isLate = now > lateDeadline
   const status = isLate ? "LATE" : "PRESENT"
 
+  // Reverse geocode location (non-blocking — don't fail clock-in if this fails)
+  let loginAddress: string | null = null
+  let loginCity: string | null = null
+
+  if (latitude != null && longitude != null) {
+    try {
+      const geo = await reverseGeocode(latitude, longitude)
+      if (geo) {
+        loginAddress = geo.address
+        loginCity = geo.city
+      }
+    } catch (e) {
+      console.log("[CLOCK_IN] Geocoding failed, continuing without address")
+    }
+  }
+
   const attendanceLog = await prisma.attendanceLog.create({
     data: {
       userId: session.user.id,
@@ -64,21 +96,63 @@ export async function POST(request: Request) {
       totalBreakMinutes: 0,
       netWorkMinutes: 0,
       overtimeMinutes: 0,
+      loginLatitude: latitude,
+      loginLongitude: longitude,
+      loginAddress,
+      loginCity,
     }
   })
+
+  // Create initial location ping if location was provided
+  if (latitude != null && longitude != null) {
+    try {
+      await prisma.locationPing.create({
+        data: {
+          attendanceLogId: attendanceLog.id,
+          userId: session.user.id,
+          latitude,
+          longitude,
+          accuracy,
+          address: loginAddress,
+        }
+      })
+    } catch (e) {
+      console.log("[CLOCK_IN] Failed to create initial location ping")
+    }
+  }
 
   await prisma.auditLog.create({
     data: {
       userId: session.user.id,
       action: "CLOCK_IN",
-      details: `Clocked in at ${now.toLocaleTimeString()}${isLate ? " (LATE)" : ""}`,
+      details: `Clocked in at ${now.toLocaleTimeString()}${isLate ? " (LATE)" : ""}${loginCity ? ` from ${loginCity}` : ""}`,
     }
   })
 
+  // Send real-time activity notification to employee
+  sendNotification(
+    session.user.id,
+    "Clock In Recorded ⏰",
+    `You clocked in at ${now.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}${isLate ? " (LATE)" : ""}${loginCity ? ` from ${loginCity}` : ""}`,
+    "ATTENDANCE_ALERT"
+  ).catch(() => {})
+
+  // Send real-time activity notification to all admins
+  prisma.user.findMany({
+    where: { role: "ADMIN", isActive: true },
+    select: { id: true }
+  }).then((admins) => {
+    admins.forEach((admin) => {
+      sendNotification(
+        admin.id,
+        "Employee Clocked In ⏰",
+        `${session.user.name} clocked in at ${now.toLocaleTimeString("en-IN", { hour: "2-digit", minute: "2-digit" })}${isLate ? " (LATE)" : ""}${loginCity ? ` from ${loginCity}` : ""}`,
+        "ATTENDANCE_ALERT"
+      ).catch(() => {})
+    })
+  }).catch(() => {})
+
   try {
-    const { pusherClient } = await import("@/lib/pusher")
-    // Note: server-side triggering usually uses `pusher` server instance, 
-    // but the spec suggests `@/lib/pusher`. If it exposes `pusher` (server client):
     const { pusher } = await import("@/lib/pusher")
     if (pusher) {
       await pusher.trigger("hr-dashboard", "employee-status-changed", {
@@ -95,6 +169,9 @@ export async function POST(request: Request) {
     success: true,
     attendanceLog,
     isLate,
-    message: isLate ? `Clocked in (Late by ${Math.round((now.getTime() - lateDeadline.getTime()) / 60000)} minutes)` : "Clocked in successfully"
+    locationCity: loginCity,
+    message: isLate
+      ? `Clocked in (Late by ${Math.round((now.getTime() - lateDeadline.getTime()) / 60000)} minutes)${loginCity ? ` from ${loginCity}` : ""}`
+      : `Clocked in successfully${loginCity ? ` from ${loginCity}` : ""}`
   })
 }

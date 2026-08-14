@@ -15,69 +15,106 @@ export async function GET() {
     const monday = new Date(now)
     monday.setDate(now.getDate() - (dayOfWeek === 0 ? 6 : dayOfWeek - 1))
     monday.setHours(0, 0, 0, 0)
-    
+
+    const sunday = new Date(monday)
+    sunday.setDate(monday.getDate() + 6)
+    sunday.setHours(23, 59, 59, 999)
+
     const weekDays = Array.from({ length: 7 }, (_, i) => {
       const d = new Date(monday)
       d.setDate(monday.getDate() + i)
       return d
     })
 
-    const activeEmployeesCount = await prisma.user.count({
-      where: { role: "EMPLOYEE", isActive: true }
-    })
+    // Batch-fetch ALL data for the entire week in 3 parallel queries
+    // instead of 14 sequential queries (2 per day × 7 days)
+    const [activeEmployeesCount, weekLogs, weekLeaves] = await Promise.all([
+      prisma.user.count({ where: { role: "EMPLOYEE", isActive: true } }),
+      prisma.attendanceLog.findMany({
+        where: { date: { gte: monday, lte: sunday } },
+        select: { status: true, userId: true, date: true },
+      }),
+      prisma.leave.findMany({
+        where: {
+          status: "APPROVED",
+          startDate: { lte: sunday },
+          endDate: { gte: monday },
+        },
+        select: { userId: true, startDate: true, endDate: true },
+      }),
+    ])
 
-    const results = await Promise.all(weekDays.map(async (dayObj) => {
+    // Group logs by day (using date string as key)
+    const logsByDay = new Map<string, typeof weekLogs>()
+    for (const log of weekLogs) {
+      const key = new Date(log.date).toDateString()
+      const arr = logsByDay.get(key) || []
+      arr.push(log)
+      logsByDay.set(key, arr)
+    }
+
+    // Build results in-memory
+    const results = weekDays.map((dayObj) => {
       const dayStart = new Date(dayObj)
       dayStart.setHours(0, 0, 0, 0)
       const dayEnd = new Date(dayObj)
       dayEnd.setHours(23, 59, 59, 999)
 
-      // Only count days in past or today up to now
+      const dayLabel = dayObj.toLocaleDateString("en-US", { weekday: "short" })
+      const dateLabel = dayObj.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+      })
+
+      // Future days
       if (dayStart > now) {
         return {
-          day: dayObj.toLocaleDateString("en-US", { weekday: "short" }),
-          date: dayObj.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+          day: dayLabel,
+          date: dateLabel,
           present: 0,
           absent: 0,
           late: 0,
-          onLeave: 0
+          onLeave: 0,
         }
       }
 
-      const logs = await prisma.attendanceLog.findMany({
-        where: { date: { gte: dayStart, lte: dayEnd } },
-        select: { status: true, userId: true }
-      })
+      const dayKey = dayObj.toDateString()
+      const logs = logsByDay.get(dayKey) || []
 
-      const present = logs.filter(l => l.status === "PRESENT" || l.status === "LATE").length
-      const late = logs.filter(l => l.status === "LATE").length
-      
-      const leaves = await prisma.leave.findMany({
-        where: {
-          status: "APPROVED",
-          startDate: { lte: dayEnd },
-          endDate: { gte: dayStart }
-        },
-        select: { userId: true }
-      })
-      const onLeave = leaves.length
+      const present = logs.filter(
+        (l) => l.status === "PRESENT" || l.status === "LATE"
+      ).length
+      const late = logs.filter((l) => l.status === "LATE").length
 
-      const accountedIds = new Set([...logs.map(l => l.userId), ...leaves.map(l => l.userId)])
+      // Filter leaves that overlap with this specific day
+      const dayLeaves = weekLeaves.filter(
+        (l) =>
+          new Date(l.startDate) <= dayEnd && new Date(l.endDate) >= dayStart
+      )
+      const onLeave = dayLeaves.length
+
+      const accountedIds = new Set([
+        ...logs.map((l) => l.userId),
+        ...dayLeaves.map((l) => l.userId),
+      ])
       const absent = Math.max(0, activeEmployeesCount - accountedIds.size)
 
       return {
-        day: dayObj.toLocaleDateString("en-US", { weekday: "short" }),
-        date: dayObj.toLocaleDateString("en-US", { month: "short", day: "numeric" }),
+        day: dayLabel,
+        date: dateLabel,
         present,
         absent,
         late,
-        onLeave
+        onLeave,
       }
-    }))
+    })
 
     return NextResponse.json(results)
   } catch (error) {
     console.error("Weekly attendance error:", error)
-    return NextResponse.json({ error: "Internal server error" }, { status: 500 })
+    return NextResponse.json(
+      { error: "Internal server error" },
+      { status: 500 }
+    )
   }
 }

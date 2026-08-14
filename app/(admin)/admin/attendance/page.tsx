@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
+import { useRouter } from "next/navigation"
 import { getInitials, formatDate, formatTime, formatDuration } from "@/lib/utils"
 import { PageHeader } from "@/components/shared/page-header"
 import { TableSkeleton } from "@/components/shared/loading-skeleton"
@@ -11,44 +12,37 @@ import { Input } from "@/components/ui/input"
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs"
 import { toast } from "sonner"
 import { 
-  Search, Clock, Users, ArrowRightLeft, FileEdit, Coffee, UserCheck, UserX, AlertCircle 
+  Search, Clock, Users, ArrowRightLeft, FileEdit, Coffee, UserCheck, UserX, AlertCircle, MapPin 
 } from "lucide-react"
 
+import { useQuery, useQueryClient } from "@tanstack/react-query"
+
 export default function AdminAttendancePage() {
+  const queryClient = useQueryClient()
+  const router = useRouter()
   const [activeTab, setActiveTab] = useState("today")
   
   // Today Tab State
-  const [todayData, setTodayData] = useState<any[]>([])
-  const [summary, setSummary] = useState<any>(null)
-  const [loadingToday, setLoadingToday] = useState(true)
   const [searchToday, setSearchToday] = useState("")
   const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().split("T")[0])
-  
   const [correctingLog, setCorrectingLog] = useState<any>(null)
 
-  const fetchTodayData = useCallback(async () => {
-    setLoadingToday(true)
-    try {
+  const isTodayDate = selectedDate === new Date().toISOString().split("T")[0]
+
+  const { data: attendanceQueryData, isLoading: loadingToday } = useQuery({
+    queryKey: isTodayDate ? ["attendance-today"] : ["attendance", selectedDate],
+    queryFn: async () => {
       const res = await fetch(`/api/attendance/admin/today?date=${selectedDate}`)
-      const data = await res.json()
-      if (res.ok) {
-        setTodayData(data.employees || [])
-        setSummary(data.summary)
-      }
-    } catch (error) {
-      toast.error("Failed to load attendance")
-    } finally {
-      setLoadingToday(false)
-    }
-  }, [selectedDate])
+      if (!res.ok) throw new Error("Failed to load attendance")
+      return res.json()
+    },
+    staleTime: 5 * 60 * 1000,
+  })
 
-  useEffect(() => {
-    if (activeTab === "today") {
-      fetchTodayData()
-    }
-  }, [activeTab, fetchTodayData])
+  const todayData = attendanceQueryData?.employees || []
+  const summary = attendanceQueryData?.summary
 
-  const filteredToday = todayData.filter(emp => 
+  const filteredToday = todayData.filter((emp: any) => 
     emp.name.toLowerCase().includes(searchToday.toLowerCase()) || 
     emp.employeeId.toLowerCase().includes(searchToday.toLowerCase()) ||
     emp.department.toLowerCase().includes(searchToday.toLowerCase())
@@ -109,7 +103,7 @@ export default function AdminAttendancePage() {
   }
 
   return (
-    <div className="max-w-7xl mx-auto space-y-6">
+    <div className="max-w-7xl mx-auto space-y-6 animate-in-fade">
       <PageHeader
         title="Attendance Management"
         description="Monitor and manage employee time and attendance"
@@ -139,12 +133,12 @@ export default function AdminAttendancePage() {
           </TabsList>
         </div>
 
-        <TabsContent value="today" className="mt-0 outline-none space-y-6 animate-fade-in">
+        <TabsContent value="today" className="mt-0 outline-none space-y-6 animate-in-fade">
           
           {loadingToday ? (
             <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
               {Array.from({ length: 5 }).map((_, i) => (
-                <div key={i} className="bg-white rounded-xl border border-slate-200/70 p-4 h-[104px] animate-pulse" />
+                <div key={i} className="bg-white rounded-2xl border border-slate-200/80 p-4 h-[104px] skeleton" />
               ))}
             </div>
           ) : summary ? (
@@ -210,7 +204,7 @@ export default function AdminAttendancePage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {filteredToday.map(emp => (
+                    {filteredToday.map((emp: any) => (
                       <tr key={emp.id} className="hover:bg-slate-50 transition-colors group">
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-3">
@@ -254,19 +248,30 @@ export default function AdminAttendancePage() {
                           </span>
                         </td>
                         <td className="px-6 py-4 text-right">
-                          <button 
-                            className="inline-flex items-center justify-center gap-1.5 h-8 px-3 rounded-md bg-white border border-slate-200 hover:bg-slate-50 text-[12px] font-medium text-indigo-600 shadow-sm transition-all active:scale-[0.98]"
-                            onClick={() => {
-                              if (emp.log) {
-                                setCorrectingLog({ ...emp.log, user: { name: emp.name } })
-                              } else {
-                                toast.error("No attendance log to correct for this employee today.")
-                              }
-                            }}
-                          >
-                            <FileEdit className="w-3.5 h-3.5" />
-                            Correct
-                          </button>
+                          <div className="flex items-center justify-end gap-2">
+                            {emp.log?.loginLatitude && (
+                              <button
+                                className="inline-flex items-center justify-center gap-1.5 h-8 px-3 rounded-md bg-white border border-emerald-200 hover:bg-emerald-50 text-[12px] font-medium text-emerald-600 shadow-sm transition-all active:scale-[0.98]"
+                                onClick={() => router.push(`/admin/attendance/location/${emp.log.id}`)}
+                              >
+                                <MapPin className="w-3.5 h-3.5" />
+                                Map
+                              </button>
+                            )}
+                            <button 
+                              className="inline-flex items-center justify-center gap-1.5 h-8 px-3 rounded-md bg-white border border-slate-200 hover:bg-slate-50 text-[12px] font-medium text-indigo-600 shadow-sm transition-all active:scale-[0.98]"
+                              onClick={() => {
+                                if (emp.log) {
+                                  setCorrectingLog({ ...emp.log, user: { name: emp.name } })
+                                } else {
+                                  toast.error("No attendance log to correct for this employee today.")
+                                }
+                              }}
+                            >
+                              <FileEdit className="w-3.5 h-3.5" />
+                              Correct
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))}
@@ -332,7 +337,7 @@ export default function AdminAttendancePage() {
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {historyData.map(emp => (
+                    {historyData.map((emp: any) => (
                       <tr key={emp.id} className="hover:bg-slate-50 transition-colors">
                         <td className="px-6 py-4">
                           <div className="flex items-center gap-3">
@@ -381,7 +386,7 @@ export default function AdminAttendancePage() {
           open={!!correctingLog}
           log={correctingLog}
           onClose={() => setCorrectingLog(null)}
-          onSuccess={fetchTodayData}
+          onSuccess={() => queryClient.invalidateQueries({ queryKey: ["attendance-today"] })}
         />
       )}
 

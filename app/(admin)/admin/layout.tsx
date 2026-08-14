@@ -1,10 +1,13 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { useSession } from "next-auth/react"
 import { redirect } from "next/navigation"
 import AdminSidebar from "@/components/admin/sidebar"
 import AdminTopbar from "@/components/admin/topbar"
+import { usePusherIntegration } from "@/hooks/use-pusher-integration"
+import { RefreshIndicator } from "@/components/ui-v2/refresh-indicator"
+import { useCascadePrefetch } from "@/hooks/use-cascade-prefetch"
 
 export default function AdminLayout({
   children,
@@ -13,6 +16,21 @@ export default function AdminLayout({
 }) {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const { data: session, status } = useSession()
+
+  usePusherIntegration(session?.user?.id)
+
+  const pathname = typeof window !== "undefined" ? window.location.pathname : "/admin"
+
+  useEffect(() => {
+    import("@/lib/perf-monitor").then((m) => {
+      m.logNavigation(pathname)
+    })
+  }, [pathname])
+
+  useCascadePrefetch({
+    role: "ADMIN",
+    dashboardQueriesReady: status === "authenticated",
+  })
 
   // Show loading while checking session
   if (status === "loading") {
@@ -48,8 +66,8 @@ export default function AdminLayout({
         />
         
         {/* Page content */}
-        <main className="flex-1 p-4 lg:p-8 
-          bg-gradient-to-br from-slate-50 via-white to-blue-50/20">
+        <main className="flex-1 p-4 lg:p-8 bg-gradient-to-br from-slate-50 via-white to-blue-50/20">
+          <RefreshIndicator />
           {children}
         </main>
       </div>

@@ -1,487 +1,457 @@
 "use client"
 
 import { useState, useEffect } from "react"
-import { useSession } from "next-auth/react"
 import Link from "next/link"
-import { pusherClient } from "@/lib/pusher"
-import { getGreeting, formatTime, formatDuration, getInitials } from "@/lib/utils"
-import { StatsCard } from "@/components/shared/stats-card"
-import { StatusBadge } from "@/components/shared/status-badge"
-import { StatCardSkeleton, TableSkeleton } from "@/components/shared/loading-skeleton"
-import { NoAttendance } from "@/components/shared/empty-state"
-import { Button } from "@/components/ui/button"
-import { 
-  Users, UserCheck, Coffee, UserX, CalendarClock, 
-  AlertCircle, Clock, UserPlus, Calendar, Plus, Megaphone 
-} from "lucide-react"
+import { useAuth } from "@/hooks/use-auth"
+import { getInitials, formatDate, formatTime, formatDuration, timeAgo } from "@/lib/utils"
+import { AnimatedNumber } from "@/components/ui-v2/animated-number"
+import { Sparkline } from "@/components/ui-v2/sparkline"
+import { StatusPill } from "@/components/ui-v2/status-pill"
 import {
-  BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer,
+  Users, UserCheck, Coffee, UserX, CalendarDays, CheckSquare,
+  ArrowUpRight, ArrowUp, ArrowDown, UserPlus, Clock, Sparkles,
+  BarChart3, ChevronRight, Activity, Bell, FileText, ArrowRight,
+  Briefcase,
+} from "lucide-react"
+import { useQuery } from "@tanstack/react-query"
+import { 
+  BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   PieChart, Pie, Cell
 } from "recharts"
-import { cn } from "@/lib/utils"
-import { CreateEmployeeModal } from "@/components/admin/create-employee-modal"
-import { toast } from "sonner"
+
+const TASK_COLORS = ["#6366F1", "#3B82F6", "#22C55E", "#EF4444"]
+
+import { 
+  useDashboardStats, 
+  useLiveStatus, 
+  useWeeklyAttendance, 
+  useActivityFeed, 
+  useTaskStats 
+} from "@/hooks/queries/use-dashboard"
 
 export default function AdminDashboardPage() {
-  const { data: session } = useSession()
+  const { user } = useAuth()
   
-  const [stats, setStats] = useState<any>(null)
-  const [liveStatus, setLiveStatus] = useState<any[]>([])
-  const [activities, setActivities] = useState<any[]>([])
-  const [weeklyAttendance, setWeeklyAttendance] = useState<any[]>([])
-  const [taskStats, setTaskStats] = useState<any>(null)
-  
-  const [loading, setLoading] = useState({
-    stats: true,
-    live: true,
-    activity: true,
-    weekly: true,
-    tasks: true,
+  const { data: stats } = useDashboardStats()
+  const { data: liveStatus = [] } = useLiveStatus()
+  const { data: weeklyAttendance = [] } = useWeeklyAttendance()
+  const { data: activityFeed = [] } = useActivityFeed()
+  const { data: taskStats } = useTaskStats()
+
+  const { data: jobsData } = useQuery({
+    queryKey: ["jobs", "dashboard-summary"],
+    queryFn: () => fetch("/api/jobs?limit=100").then(r => r.json()),
+    staleTime: 60 * 1000,
   })
 
-  const [showCreateModal, setShowCreateModal] = useState(false)
-  const [exporting, setExporting] = useState(false)
+  const jobsList: any[] = jobsData?.jobs || []
+  const openJobsCount = jobsList.filter(j => j.status === "OPEN" || j.status === "IN_PROGRESS").length
+  const unassignedJobsCount = jobsList.filter(j => !j.assignedToId && j.status !== "CLOSED" && j.status !== "CANCELLED").length
 
-  const handleExport = async () => {
-    setExporting(true)
-    const params = new URLSearchParams({
-      type: "attendance", // Default to attendance export for dashboard
-      month: String(new Date().getMonth() + 1),
-      year: String(new Date().getFullYear()),
-      employeeId: "all",
-    })
-    window.location.href = `/api/reports/export?${params}`
-    setTimeout(() => setExporting(false), 2000)
-    toast.success("Download started!")
-  }
+  const firstName = user?.name?.split(" ")[0] || "Admin"
+  const now = new Date()
+  const hour = now.getHours()
+  const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening"
 
-  const fetchStats = async () => {
-    try {
-      const res = await fetch("/api/admin/dashboard/stats")
-      if (res.ok) {
-        setStats(await res.json())
-        setLoading(p => ({ ...p, stats: false }))
-      }
-    } catch (error) {
-      console.error("Failed to fetch stats", error)
-    }
-  }
-
-  const fetchLiveStatus = async () => {
-    try {
-      const res = await fetch("/api/admin/dashboard/live-status")
-      if (res.ok) {
-        setLiveStatus(await res.json())
-        setLoading(p => ({ ...p, live: false }))
-      }
-    } catch (error) {
-      console.error("Failed to fetch live status", error)
-    }
-  }
-
-  const fetchActivity = async () => {
-    try {
-      const res = await fetch("/api/admin/dashboard/activity-feed")
-      if (res.ok) {
-        const data = await res.json()
-        setActivities(data.activities || [])
-        setLoading(p => ({ ...p, activity: false }))
-      }
-    } catch (error) {
-      console.error("Failed to fetch activity", error)
-    }
-  }
-
-  const fetchWeekly = async () => {
-    try {
-      const res = await fetch("/api/admin/dashboard/weekly-attendance")
-      if (res.ok) {
-        setWeeklyAttendance(await res.json())
-        setLoading(p => ({ ...p, weekly: false }))
-      }
-    } catch (error) {
-      console.error("Failed to fetch weekly attendance", error)
-    }
-  }
-
-  const fetchTasks = async () => {
-    try {
-      const res = await fetch("/api/admin/dashboard/task-stats")
-      if (res.ok) {
-        setTaskStats(await res.json())
-        setLoading(p => ({ ...p, tasks: false }))
-      }
-    } catch (error) {
-      console.error("Failed to fetch task stats", error)
-    }
-  }
-
-  useEffect(() => {
-    // Fire all API calls in parallel for faster page load
-    Promise.allSettled([
-      fetchStats(),
-      fetchLiveStatus(),
-      fetchActivity(),
-      fetchWeekly(),
-      fetchTasks(),
-    ])
-
-    // Auto refresh live status and stats
-    const interval = setInterval(() => {
-      fetchLiveStatus()
-      fetchStats()
-    }, 30000)
-
-    return () => clearInterval(interval)
-  }, [])
-
-  // Pusher real-time updates
-  useEffect(() => {
-    try {
-      const channel = pusherClient.subscribe("hr-dashboard")
-      
-      channel.bind("employee-status-changed", () => {
-        fetchLiveStatus()
-        fetchActivity()
-      })
-      
-      channel.bind("new-leave-request", () => {
-        fetchStats()
-        fetchActivity()
-      })
-      
-      return () => {
-        pusherClient.unsubscribe("hr-dashboard")
-      }
-    } catch (error) {
-      console.log("Pusher not configured, skipping real-time")
-    }
-  }, [])
+  const taskPieData = taskStats ? [
+    { name: "To Do", value: taskStats.todo || 0 },
+    { name: "In Progress", value: taskStats.inProgress || 0 },
+    { name: "Completed", value: taskStats.completed || 0 },
+    { name: "Blocked", value: taskStats.blocked || 0 },
+  ].filter(d => d.value > 0) : []
 
   return (
-    <div className="max-w-7xl mx-auto space-y-6">
+    <div className="max-w-7xl mx-auto space-y-6 animate-in-fade">
       
-      {/* Page Header */}
-      <div className="flex items-start justify-between gap-4 mb-6">
-        <div className="min-w-0">
-          <p className="text-[12.5px] text-slate-500 mb-1 font-medium tracking-wide uppercase">
-            {new Date().toLocaleDateString("en-US", {
-              weekday: "long",
-              year: "numeric", 
-              month: "long",
-              day: "numeric"
-            })}
+      {/* SECTION 1: SLEEK EXECUTIVE HEADER */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 pb-2 border-b border-slate-200/60">
+        <div>
+          <div className="flex items-center gap-2 mb-1">
+            <span className="live-dot" />
+            <span className="text-xs font-semibold text-slate-500">{formatDate(now)}</span>
+            <span className="text-slate-300">•</span>
+            <span className="text-xs font-semibold text-indigo-600 bg-indigo-50 px-2 py-0.5 rounded-full border border-indigo-100">Live Workspace</span>
+          </div>
+          <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
+            {greeting}, {firstName}!
+          </h1>
+          <p className="text-xs sm:text-sm text-slate-500 font-medium mt-1">
+            Here's what's happening across your team today. <span className="font-bold text-slate-700">{stats?.totalEmployees || 0} active employees</span> registered.
           </p>
-          <h2 className="text-[22px] font-bold text-slate-900 tracking-tight leading-tight">
-            Welcome back, {session?.user?.name?.split(" ")?.[0] || "Admin"}
-          </h2>
         </div>
-        
-        <div className="flex items-center gap-3 flex-shrink-0">
-          <button 
-            onClick={handleExport}
-            disabled={exporting}
-            className="inline-flex items-center gap-2 h-9 px-4 rounded-lg bg-white border border-slate-200 hover:bg-slate-50 hover:border-slate-300 text-slate-700 text-[13px] font-medium shadow-sm transition-all active:scale-[0.98]"
+
+        <div className="flex items-center gap-3">
+          <Link
+            href="/admin/recruitment/jobs"
+            className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold shadow-xs transition-all"
           >
-            {exporting ? <div className="w-4 h-4 rounded-full border-2 border-slate-300 border-t-slate-700 animate-spin" /> : null}
-            Export report
-          </button>
-          <button 
-            onClick={() => setShowCreateModal(true)}
-            className="inline-flex items-center gap-2 h-9 px-4 rounded-lg bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white text-[13px] font-medium shadow-md shadow-indigo-500/25 hover:shadow-lg hover:shadow-indigo-500/30 transition-all active:scale-[0.98]"
+            <Briefcase className="w-4 h-4 text-indigo-600" />
+            <span>Recruitment ({openJobsCount})</span>
+          </Link>
+          <Link
+            href="/admin/tasks"
+            className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-xl bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs font-semibold shadow-xs transition-all"
+          >
+            <CheckSquare className="w-4 h-4 text-indigo-600" />
+            <span>Tasks</span>
+          </Link>
+          <Link
+            href="/admin/employees"
+            className="inline-flex items-center gap-2 h-9 px-4 rounded-xl bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 text-white text-xs font-bold shadow-md shadow-indigo-500/20 transition-all active:scale-[0.97]"
           >
             <UserPlus className="w-4 h-4" />
-            Add employee
-          </button>
-        </div>
-      </div>
-      
-      <CreateEmployeeModal 
-        open={showCreateModal}
-        onClose={() => setShowCreateModal(false)}
-        onSuccess={() => {
-          fetchStats()
-        }}
-      />
-
-      {/* Stats Grid - 6 cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-        
-        <StatsCard
-          title="Total employees"
-          value={stats?.totalEmployees ?? 0}
-          icon={Users}
-          description={`${stats?.activeEmployees ?? 0} active`}
-          loading={loading.stats}
-          color="indigo"
-        />
-        <StatsCard
-          title="Present today"
-          value={stats?.presentToday ?? 0}
-          icon={UserCheck}
-          loading={loading.stats}
-          color="emerald"
-        />
-        <StatsCard
-          title="On break"
-          value={stats?.onBreakNow ?? 0}
-          icon={Coffee}
-          loading={loading.stats}
-          color="amber"
-        />
-        <StatsCard
-          title="Absent"
-          value={stats?.absentToday ?? 0}
-          icon={UserX}
-          loading={loading.stats}
-          color="rose"
-        />
-        <StatsCard
-          title="Pending leaves"
-          value={stats?.pendingLeaveRequests ?? 0}
-          icon={CalendarClock}
-          loading={loading.stats}
-          color="blue"
-        />
-        <StatsCard
-          title="Due today"
-          value={stats?.tasksDueToday ?? 0}
-          icon={AlertCircle}
-          loading={loading.stats}
-          color="purple"
-        />
-      </div>
-
-      {/* Live Status Table */}
-      <div className="bg-white border border-slate-200/70 rounded-xl shadow-sm overflow-hidden">
-        
-        <div className="px-6 py-4 border-b border-slate-100 bg-gradient-to-r from-slate-50/80 to-blue-50/30 flex items-center justify-between">
-          <div>
-            <div className="flex items-center gap-2">
-              <div className="relative">
-                <div className="w-1.5 h-1.5 bg-emerald-500 rounded-full" />
-                <div className="absolute inset-0 w-1.5 h-1.5 bg-emerald-500 rounded-full animate-ping opacity-75" />
-              </div>
-              <h3 className="text-[15px] font-semibold text-slate-900">
-                Team activity
-              </h3>
-            </div>
-            <p className="text-[12px] text-slate-500 mt-0.5">
-              Real-time status of your team members
-            </p>
-          </div>
-          <Link href="/admin/attendance" className="text-[13px] text-slate-500 hover:text-slate-900 font-medium transition-colors">
-            View all →
+            <span>Add Employee</span>
           </Link>
         </div>
+      </div>
 
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="bg-slate-50/50 text-slate-500 font-medium border-b border-slate-200">
-              <tr>
-                <th className="uppercase tracking-wider text-[11px] px-6 py-3">Employee</th>
-                <th className="uppercase tracking-wider text-[11px] px-6 py-3">Status</th>
-                <th className="uppercase tracking-wider text-[11px] px-6 py-3">Clock in</th>
-                <th className="uppercase tracking-wider text-[11px] px-6 py-3">Hours today</th>
-                <th className="uppercase tracking-wider text-[11px] px-6 py-3">Break</th>
-                <th className="uppercase tracking-wider text-[11px] px-6 py-3 text-right">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {liveStatus.map(emp => (
-                <tr key={emp.userId} className="hover:bg-slate-50 transition-colors">
-                  <td className="px-6 py-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-indigo-50 to-blue-50 border border-indigo-100 flex items-center justify-center flex-shrink-0">
-                        <span className="text-[11px] font-bold text-indigo-700">
-                          {getInitials(emp.name)}
-                        </span>
-                      </div>
-                      <div>
-                        <p className="text-[13px] font-medium text-slate-900 leading-tight">
-                          {emp.name}
-                        </p>
-                        <p className="text-[11px] text-slate-500 mt-0.5">
-                          {emp.department}
-                        </p>
-                      </div>
-                    </div>
-                  </td>
-                  <td className="px-6 py-4">
-                    <StatusBadge status={emp.status} size="sm" />
-                  </td>
-                  <td className="px-6 py-4 text-[13px] text-slate-600 font-medium">
-                    {emp.loginTime ? formatTime(emp.loginTime) : "-"}
-                  </td>
-                  <td className="px-6 py-4 text-[13px] text-slate-600">
-                    {emp.hoursWorkedToday > 0 ? formatDuration(emp.hoursWorkedToday) : "-"}
-                  </td>
-                  <td className="px-6 py-4 text-[13px] text-slate-600">
-                    {emp.breakTimeToday > 0 ? formatDuration(emp.breakTimeToday) : "-"}
-                  </td>
-                  <td className="px-6 py-4 text-right">
-                    <Link 
-                      href={`/admin/employees/${emp.userId}`}
-                      className="inline-flex items-center justify-center h-8 px-3 rounded-md bg-white border border-slate-200 hover:bg-slate-50 text-[12px] font-medium text-slate-700 shadow-sm transition-colors active:scale-[0.98]"
-                    >
-                      View
-                    </Link>
-                  </td>
-                </tr>
-              ))}
-              {liveStatus.length === 0 && !loading.live && (
-                <tr>
-                  <td colSpan={6} className="px-6 py-12 text-center">
-                    <div className="flex justify-center mb-3">
-                      <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-slate-50 to-slate-100 border border-slate-200 flex items-center justify-center">
-                        <Users className="w-6 h-6 text-slate-400" />
-                      </div>
-                    </div>
-                    <h3 className="text-[14px] font-medium text-slate-900 mb-1">No active team members</h3>
-                    <p className="text-[13px] text-slate-500">Everyone has clocked out for today</p>
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
+      {/* SECTION 2: KPI CARDS (6 METRICS) */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 xl:grid-cols-6 gap-4 stagger-children">
+        
+        {/* Card 1: Total Employees */}
+        <div className="card p-5 hover-lift group border border-slate-200/80">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Total Team</span>
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-blue-600 flex items-center justify-center text-white shadow-md shadow-indigo-500/20">
+              <Users className="w-4.5 h-4.5" />
+            </div>
+          </div>
+          <p className="text-2xl font-extrabold text-slate-900 tracking-tight">
+            <AnimatedNumber value={stats?.totalEmployees || 0} />
+          </p>
+          <div className="mt-3">
+            <Sparkline data={[10, 14, 18, 22, 25, 28, stats?.totalEmployees || 30]} color="#6366F1" height={24} />
+          </div>
+        </div>
+
+        {/* Card 2: Present Today */}
+        <div className="card p-5 hover-lift group border border-slate-200/80">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Present</span>
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-600 flex items-center justify-center text-white shadow-md shadow-emerald-500/20">
+              <UserCheck className="w-4.5 h-4.5" />
+            </div>
+          </div>
+          <p className="text-2xl font-extrabold text-slate-900 tracking-tight">
+            <AnimatedNumber value={stats?.presentToday || 0} />
+          </p>
+          <div className="mt-3">
+            <Sparkline data={[5, 8, 12, 16, 20, 22, stats?.presentToday || 24]} color="#10B981" height={24} />
+          </div>
+        </div>
+
+        {/* Card 3: On Break */}
+        <div className="card p-5 hover-lift group border border-slate-200/80">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">On Break</span>
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 flex items-center justify-center text-white shadow-md shadow-amber-500/20">
+              <Coffee className="w-4.5 h-4.5" />
+            </div>
+          </div>
+          <p className="text-2xl font-extrabold text-slate-900 tracking-tight">
+            <AnimatedNumber value={stats?.onBreakToday || 0} />
+          </p>
+          <div className="mt-3">
+            <Sparkline data={[2, 4, 3, 6, 4, 5, stats?.onBreakToday || 3]} color="#F59E0B" height={24} />
+          </div>
+        </div>
+
+        {/* Card 4: Absent */}
+        <div className="card p-5 hover-lift group border border-slate-200/80">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Absent</span>
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-rose-500 to-red-600 flex items-center justify-center text-white shadow-md shadow-rose-500/20">
+              <UserX className="w-4.5 h-4.5" />
+            </div>
+          </div>
+          <p className="text-2xl font-extrabold text-slate-900 tracking-tight">
+            <AnimatedNumber value={stats?.absentToday || 0} />
+          </p>
+          <div className="mt-3">
+            <Sparkline data={[4, 3, 5, 2, 3, 1, stats?.absentToday || 2]} color="#EF4444" height={24} />
+          </div>
+        </div>
+
+        {/* Card 5: Pending Leaves */}
+        <div className="card p-5 hover-lift group border border-slate-200/80">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Pending Leaves</span>
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-violet-500 to-purple-600 flex items-center justify-center text-white shadow-md shadow-violet-500/20">
+              <CalendarDays className="w-4.5 h-4.5" />
+            </div>
+          </div>
+          <p className="text-2xl font-extrabold text-slate-900 tracking-tight">
+            <AnimatedNumber value={stats?.pendingLeaves || 0} />
+          </p>
+          <div className="mt-3">
+            <Sparkline data={[1, 3, 2, 4, 5, 3, stats?.pendingLeaves || 2]} color="#8B5CF6" height={24} />
+          </div>
+        </div>
+
+        {/* Card 6: Tasks Due */}
+        <div className="card p-5 hover-lift group border border-slate-200/80">
+          <div className="flex items-center justify-between mb-3">
+            <span className="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Tasks Due</span>
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-blue-500 to-cyan-600 flex items-center justify-center text-white shadow-md shadow-blue-500/20">
+              <CheckSquare className="w-4.5 h-4.5" />
+            </div>
+          </div>
+          <p className="text-2xl font-extrabold text-slate-900 tracking-tight">
+            <AnimatedNumber value={taskStats?.inProgress || 0} />
+          </p>
+          <div className="mt-3">
+            <Sparkline data={[8, 12, 10, 15, 18, 14, taskStats?.inProgress || 12]} color="#3B82F6" height={24} />
+          </div>
         </div>
       </div>
 
-      {/* Two column: Activity + Charts */}
-      <div className="grid grid-cols-1 lg:grid-cols-5 gap-4">
+      {/* SECTION 3: TWO-COLUMN LAYOUT */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         
-        {/* Activity feed */}
-        <div className="lg:col-span-3 bg-white border border-slate-200/70 rounded-xl shadow-sm overflow-hidden flex flex-col">
-          <div className="px-6 py-4 border-b border-slate-100 bg-gradient-to-r from-slate-50/80 to-blue-50/30">
-            <h3 className="text-[15px] font-semibold text-slate-900">
-              Live updates
-            </h3>
-            <p className="text-[12px] text-slate-500 mt-0.5">
-              Recent activity from your team
-            </p>
+        {/* Left Column (2/3): Live Employee Status Table */}
+        <div className="lg:col-span-2 card overflow-hidden flex flex-col border border-slate-200/80">
+          <div className="px-6 py-4 border-b border-slate-100 bg-slate-50/50 flex items-center justify-between">
+            <div>
+              <h3 className="text-sm font-bold text-slate-900">Live Team Status</h3>
+              <p className="text-xs text-slate-500 mt-0.5 font-medium">Real-time attendance & activity monitoring</p>
+            </div>
+            <Link
+              href="/admin/attendance"
+              className="inline-flex items-center gap-1.5 text-xs font-bold text-indigo-600 hover:text-indigo-700 transition-colors"
+            >
+              <span>View All</span>
+              <ChevronRight className="w-3.5 h-3.5" />
+            </Link>
           </div>
-          
-          <div className="p-6 space-y-4 max-h-[400px] overflow-y-auto">
-            {activities.map((activity, i) => (
-              <div key={i} className="flex gap-4">
-                <div className="relative flex flex-col items-center">
-                  <div className={cn(
-                    "w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0 shadow-sm border",
-                    activity.type === "LOGIN" && "bg-emerald-50 text-emerald-600 border-emerald-100",
-                    activity.type === "LOGOUT" && "bg-slate-50 text-slate-600 border-slate-200",
-                    activity.type === "BREAK_START" && "bg-amber-50 text-amber-600 border-amber-100",
-                    activity.type === "BREAK_END" && "bg-blue-50 text-blue-600 border-blue-100",
-                    activity.type === "LEAVE_REQUEST" && "bg-purple-50 text-purple-600 border-purple-100",
-                  )}>
-                    <AlertCircle className="w-4 h-4" />
+
+          <div className="overflow-x-auto flex-1">
+            <table className="w-full text-left text-xs">
+              <thead className="bg-slate-50/80 text-slate-500 font-bold uppercase tracking-wider border-b border-slate-200">
+                <tr>
+                  <th className="px-6 py-3">Employee</th>
+                  <th className="px-6 py-3">Department</th>
+                  <th className="px-6 py-3">Status</th>
+                  <th className="px-6 py-3">Login Time</th>
+                  <th className="px-6 py-3 text-right">Work Time</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {liveStatus.length === 0 ? (
+                  <tr>
+                    <td colSpan={5} className="px-6 py-12 text-center text-slate-400 font-medium">
+                      No active attendance records recorded today
+                    </td>
+                  </tr>
+                ) : (
+                  liveStatus.slice(0, 7).map((emp: any) => (
+                    <tr key={emp.id} className="hover:bg-slate-50/80 transition-colors group">
+                      <td className="px-6 py-3.5">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-indigo-50 to-blue-50 border border-indigo-100 flex items-center justify-center text-indigo-700 font-bold text-xs flex-shrink-0 group-hover:scale-105 transition-transform">
+                            {getInitials(emp.name)}
+                          </div>
+                          <div>
+                            <p className="font-bold text-slate-900 text-xs leading-snug">{emp.name}</p>
+                            <p className="text-[10px] text-slate-400 font-mono mt-0.5">{emp.employeeId}</p>
+                          </div>
+                        </div>
+                      </td>
+                      <td className="px-6 py-3.5">
+                        <span className="px-2 py-0.5 rounded-md bg-slate-100 text-slate-700 text-[11px] font-semibold border border-slate-200/60">
+                          {emp.department}
+                        </span>
+                      </td>
+                      <td className="px-6 py-3.5">
+                        <StatusPill status={emp.status} />
+                      </td>
+                      <td className="px-6 py-3.5 font-semibold text-slate-600">
+                        {emp.loginTime ? formatTime(emp.loginTime) : "—"}
+                      </td>
+                      <td className="px-6 py-3.5 text-right font-mono font-bold text-slate-900">
+                        {emp.hoursWorkedToday ? formatDuration(emp.hoursWorkedToday) : emp.workMinutes ? formatDuration(emp.workMinutes * 60) : "0m"}
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Right Column (1/3): Activity Feed */}
+        <div className="card p-6 flex flex-col border border-slate-200/80">
+          <div className="flex items-center justify-between mb-5">
+            <div>
+              <h3 className="text-sm font-bold text-slate-900">Activity Timeline</h3>
+              <p className="text-xs text-slate-500 mt-0.5 font-medium">Recent team events & pings</p>
+            </div>
+            <div className="w-2 h-2 rounded-full bg-emerald-500 live-dot" />
+          </div>
+
+          <div className="space-y-4 flex-1 overflow-y-auto max-h-[380px] pr-1">
+            {(!Array.isArray(activityFeed) || activityFeed.length === 0) ? (
+              <p className="text-xs text-slate-400 text-center py-10 font-medium">No recent activity</p>
+            ) : (
+              activityFeed.map((act) => (
+                <div key={act.id} className="flex items-start gap-3 group">
+                  <div className="w-7 h-7 rounded-lg bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 flex-shrink-0 mt-0.5 group-hover:scale-110 transition-transform">
+                    <Activity className="w-3.5 h-3.5" />
                   </div>
-                  {i < activities.length - 1 && (
-                    <div className="w-px h-full min-h-[16px] bg-slate-100 my-1" />
-                  )}
+                  <div className="flex-1 min-w-0">
+                    <p className="text-xs font-semibold text-slate-800 leading-snug">
+                      <span className="font-bold text-slate-900">{act.user?.name || "Employee"}</span> {act.description || act.action || "performed an action"}
+                    </p>
+                    <p className="text-[10px] font-medium text-slate-400 mt-0.5">
+                      {act.time ? timeAgo(act.time) : act.createdAt ? timeAgo(act.createdAt) : "Just now"}
+                    </p>
+                  </div>
                 </div>
-                <div className="flex-1 pb-1 pt-1">
-                  <p className="text-[13px] text-slate-700 leading-snug">
-                    {activity.description}
-                  </p>
-                  <p className="text-[11px] font-medium text-slate-400 mt-1">
-                    {formatTime(activity.time)}
-                  </p>
-                </div>
-              </div>
-            ))}
-            {activities.length === 0 && (
-              <div className="text-center py-8 text-[13px] text-slate-500">
-                No recent activity to show.
-              </div>
+              ))
             )}
           </div>
         </div>
+      </div>
 
-        {/* Charts sidebar */}
-        <div className="lg:col-span-2 space-y-4">
-          
-          <div className="bg-white border border-slate-200/70 rounded-xl shadow-sm p-6">
-            <h3 className="text-[15px] font-semibold text-slate-900 mb-0.5">
-              This week
-            </h3>
-            <p className="text-[12px] text-slate-500 mb-5">
-              Attendance overview
-            </p>
-            
-            <ResponsiveContainer width="100%" height={160}>
-              <BarChart data={weeklyAttendance}>
-                <CartesianGrid strokeDasharray="0" 
-                  stroke="#f4f4f5" vertical={false} />
-                <XAxis 
-                  dataKey="day" 
-                  tick={{ fontSize: 10, fill: '#71717a' }}
-                  axisLine={false}
-                  tickLine={false}
+      {/* SECTION 4: ANALYTICS ROW */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        
+        {/* Weekly Attendance Bar Chart (2/3) */}
+        <div className="lg:col-span-2 card p-6 border border-slate-200/80">
+          <div className="flex items-center justify-between mb-6">
+            <div>
+              <h3 className="text-sm font-bold text-slate-900">Weekly Attendance Trend</h3>
+              <p className="text-xs text-slate-500 mt-0.5 font-medium">Present vs absent overview this week</p>
+            </div>
+            <div className="flex items-center gap-4 text-xs font-semibold">
+              <span className="flex items-center gap-1.5 text-indigo-600"><span className="w-2.5 h-2.5 rounded-full bg-indigo-600" />Present</span>
+              <span className="flex items-center gap-1.5 text-rose-500"><span className="w-2.5 h-2.5 rounded-full bg-rose-500" />Absent</span>
+            </div>
+          </div>
+
+          <div className="h-64 w-full">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={weeklyAttendance} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
+                <XAxis dataKey="day" stroke="#94A3B8" fontSize={11} tickLine={false} axisLine={false} />
+                <YAxis stroke="#94A3B8" fontSize={11} tickLine={false} axisLine={false} />
+                <Tooltip
+                  contentStyle={{ backgroundColor: "#0F172A", borderRadius: "12px", border: "none", color: "#FFF", fontSize: "12px" }}
                 />
-                <YAxis 
-                  tick={{ fontSize: 10, fill: '#71717a' }}
-                  axisLine={false}
-                  tickLine={false}
-                />
-                <RechartsTooltip 
-                  contentStyle={{
-                    backgroundColor: '#ffffff',
-                    border: '1px solid #e4e4e7',
-                    borderRadius: '6px',
-                    fontSize: '12px',
-                    padding: '8px',
-                    boxShadow: '0 2px 8px rgba(0,0,0,0.04)'
-                  }}
-                />
-                <Bar dataKey="present" fill="#6366f1" radius={[4,4,0,0]} maxBarSize={24} />
-                <Bar dataKey="absent" fill="#e2e8f0" radius={[4,4,0,0]} maxBarSize={24} />
+                <Bar dataKey="present" fill="#6366F1" radius={[6, 6, 0, 0]} maxBarSize={32} />
+                <Bar dataKey="absent" fill="#EF4444" radius={[6, 6, 0, 0]} maxBarSize={32} />
               </BarChart>
             </ResponsiveContainer>
           </div>
+        </div>
 
-          <div className="bg-white border border-slate-200/70 rounded-xl shadow-sm p-6">
-            <div className="flex items-center justify-between mb-0.5">
-              <h3 className="text-[15px] font-semibold text-slate-900">
-                Tasks
-              </h3>
-              <span className="text-[12px] font-medium text-slate-500 bg-slate-100 px-2 py-0.5 rounded-full tabular-nums">
-                {taskStats?.completionRate ?? 0}% complete
-              </span>
-            </div>
-            <p className="text-[12px] text-slate-500 mb-5">
-              Current status distribution
-            </p>
-            
-            <ResponsiveContainer width="100%" height={140}>
+        {/* Task Distribution Donut Chart (1/3) */}
+        <div className="card p-6 flex flex-col border border-slate-200/80">
+          <div className="mb-4">
+            <h3 className="text-sm font-bold text-slate-900">Task Breakdown</h3>
+            <p className="text-xs text-slate-500 mt-0.5 font-medium">Distribution by status</p>
+          </div>
+
+          <div className="h-48 w-full relative flex items-center justify-center">
+            <ResponsiveContainer width="100%" height="100%">
               <PieChart>
                 <Pie
-                  data={[
-                    { name: "Done", value: taskStats?.completed, fill: "#22c55e" },
-                    { name: "In progress", value: taskStats?.inProgress, fill: "#6366f1" },
-                    { name: "Todo", value: taskStats?.todo, fill: "#e2e8f0" },
-                    { name: "Blocked", value: taskStats?.blocked, fill: "#ef4444" },
-                  ]}
+                  data={taskPieData.length > 0 ? taskPieData : [{ name: "No tasks", value: 1 }]}
                   cx="50%"
                   cy="50%"
-                  innerRadius={38}
-                  outerRadius={60}
-                  paddingAngle={2}
+                  innerRadius={50}
+                  outerRadius={70}
+                  paddingAngle={4}
                   dataKey="value"
-                />
-                <RechartsTooltip 
-                  contentStyle={{
-                    backgroundColor: '#ffffff',
-                    border: '1px solid #e4e4e7',
-                    borderRadius: '6px',
-                    fontSize: '12px',
-                    padding: '8px'
-                  }}
-                />
+                >
+                  {taskPieData.map((_, idx) => (
+                    <Cell key={idx} fill={TASK_COLORS[idx % TASK_COLORS.length]} />
+                  ))}
+                </Pie>
               </PieChart>
             </ResponsiveContainer>
+            <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+              <span className="text-xl font-extrabold text-slate-900">{taskStats?.total || 0}</span>
+              <span className="text-[10px] font-semibold text-slate-400 uppercase tracking-widest">Tasks</span>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-2 mt-2 pt-3 border-t border-slate-100">
+            {taskPieData.map((item, idx) => (
+              <div key={item.name} className="flex items-center gap-2 text-xs font-semibold text-slate-700">
+                <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: TASK_COLORS[idx % TASK_COLORS.length] }} />
+                <span className="truncate">{item.name}: {item.value}</span>
+              </div>
+            ))}
           </div>
         </div>
       </div>
+
+      {/* SECTION 5: QUICK ACTIONS GRID */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+        <Link
+          href="/admin/employees"
+          className="card p-5 hover-lift group border border-slate-200/80 flex items-center justify-between"
+        >
+          <div className="flex items-center gap-3.5">
+            <div className="w-10 h-10 rounded-xl bg-indigo-50 border border-indigo-100 flex items-center justify-center text-indigo-600 group-hover:scale-110 transition-transform">
+              <Users className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-slate-900 group-hover:text-indigo-600 transition-colors">Manage Team</p>
+              <p className="text-[11px] font-medium text-slate-500 mt-0.5">Directory & onboarding</p>
+            </div>
+          </div>
+          <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-indigo-600 group-hover:translate-x-1 transition-all" />
+        </Link>
+
+        <Link
+          href="/admin/attendance"
+          className="card p-5 hover-lift group border border-slate-200/80 flex items-center justify-between"
+        >
+          <div className="flex items-center gap-3.5">
+            <div className="w-10 h-10 rounded-xl bg-emerald-50 border border-emerald-100 flex items-center justify-center text-emerald-600 group-hover:scale-110 transition-transform">
+              <Clock className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-slate-900 group-hover:text-emerald-600 transition-colors">Time Logs</p>
+              <p className="text-[11px] font-medium text-slate-500 mt-0.5">Attendance & pings</p>
+            </div>
+          </div>
+          <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-emerald-600 group-hover:translate-x-1 transition-all" />
+        </Link>
+
+        <Link
+          href="/admin/leaves"
+          className="card p-5 hover-lift group border border-slate-200/80 flex items-center justify-between"
+        >
+          <div className="flex items-center gap-3.5">
+            <div className="w-10 h-10 rounded-xl bg-amber-50 border border-amber-100 flex items-center justify-center text-amber-600 group-hover:scale-110 transition-transform">
+              <CalendarDays className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-slate-900 group-hover:text-amber-600 transition-colors">Leave Requests</p>
+              <p className="text-[11px] font-medium text-slate-500 mt-0.5">Review & approvals</p>
+            </div>
+          </div>
+          <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-amber-600 group-hover:translate-x-1 transition-all" />
+        </Link>
+
+        <Link
+          href="/admin/tasks"
+          className="card p-5 hover-lift group border border-slate-200/80 flex items-center justify-between"
+        >
+          <div className="flex items-center gap-3.5">
+            <div className="w-10 h-10 rounded-xl bg-violet-50 border border-violet-100 flex items-center justify-center text-violet-600 group-hover:scale-110 transition-transform">
+              <CheckSquare className="w-5 h-5" />
+            </div>
+            <div>
+              <p className="text-xs font-bold text-slate-900 group-hover:text-violet-600 transition-colors">Task Board</p>
+              <p className="text-[11px] font-medium text-slate-500 mt-0.5">Projects & tracking</p>
+            </div>
+          </div>
+          <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-violet-600 group-hover:translate-x-1 transition-all" />
+        </Link>
+      </div>
+
     </div>
   )
 }

@@ -5,6 +5,9 @@ import { prisma } from "@/lib/prisma"
 export async function GET() {
   try {
     const session = await requireAuth()
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
     
     const notifications = await prisma.notification.findMany({
       where: { userId: session.user.id },
@@ -16,7 +19,6 @@ export async function GET() {
 
     return NextResponse.json({ notifications, unreadCount })
   } catch (error) {
-    console.error("[NOTIFICATIONS_GET]", error)
-    return NextResponse.json({ error: "Internal Error" }, { status: 500 })
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
   }
 }

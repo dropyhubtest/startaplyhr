@@ -49,6 +49,10 @@ export async function PUT(request: Request) {
     defaultCasualLeave,
     defaultPaidLeave,
     defaultWFHLeave,
+    enableLocationTracking,
+    requireLocationForClockIn,
+    trackLocationDuringWork,
+    locationPingIntervalMinutes,
   } = body
 
   let settings = await prisma.companySettings.findFirst()
@@ -66,6 +70,10 @@ export async function PUT(request: Request) {
         defaultCasualLeave: defaultCasualLeave !== undefined ? parseInt(defaultCasualLeave) : 12,
         defaultPaidLeave: defaultPaidLeave !== undefined ? parseInt(defaultPaidLeave) : 15,
         defaultWFHLeave: defaultWFHLeave !== undefined ? parseInt(defaultWFHLeave) : 24,
+        enableLocationTracking: enableLocationTracking ?? false,
+        requireLocationForClockIn: requireLocationForClockIn ?? false,
+        trackLocationDuringWork: trackLocationDuringWork ?? false,
+        locationPingIntervalMinutes: locationPingIntervalMinutes ? parseInt(locationPingIntervalMinutes) : 15,
       }
     })
   } else {
@@ -82,6 +90,10 @@ export async function PUT(request: Request) {
         ...(defaultCasualLeave !== undefined && { defaultCasualLeave: parseInt(defaultCasualLeave) }),
         ...(defaultPaidLeave !== undefined && { defaultPaidLeave: parseInt(defaultPaidLeave) }),
         ...(defaultWFHLeave !== undefined && { defaultWFHLeave: parseInt(defaultWFHLeave) }),
+        ...(enableLocationTracking !== undefined && { enableLocationTracking }),
+        ...(requireLocationForClockIn !== undefined && { requireLocationForClockIn }),
+        ...(trackLocationDuringWork !== undefined && { trackLocationDuringWork }),
+        ...(locationPingIntervalMinutes !== undefined && { locationPingIntervalMinutes: parseInt(locationPingIntervalMinutes) }),
       }
     })
   }

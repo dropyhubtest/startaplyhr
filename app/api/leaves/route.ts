@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
-import prisma from "@/lib/prisma"
+import { prisma } from "@/lib/prisma"
+import { sendNotification } from "@/lib/utils"
 
 // GET /api/leaves
 // Query params: 
@@ -10,73 +11,77 @@ import prisma from "@/lib/prisma"
 //   page, limit
 
 export async function GET(request: Request) {
-  const session = await getServerSession(authOptions)
-  if (!session) {
-    return NextResponse.json(
-      { error: "Unauthorized" }, { status: 401 }
-    )
-  }
-
-  const { searchParams } = new URL(request.url)
-  const status = searchParams.get("status") || ""
-  const employeeId = searchParams.get("employeeId") || ""
-  const page = parseInt(searchParams.get("page") || "1")
-  const limit = parseInt(searchParams.get("limit") || "10")
-  const skip = (page - 1) * limit
-
-  // Build where clause based on role
-  let where: any = {}
-
-  if (session.user.role === "EMPLOYEE") {
-    // Employees can only see their own leaves
-    where.userId = session.user.id
-  } else {
-    // Admin can filter by employee
-    if (employeeId && employeeId !== "all") {
-      where.userId = employeeId
+  try {
+    const session = await getServerSession(authOptions)
+    if (!session) {
+      return NextResponse.json(
+        { error: "Unauthorized" }, { status: 401 }
+      )
     }
-  }
 
-  // Filter by status
-  if (status && status !== "all") {
-    where.status = status
-  }
+    const { searchParams } = new URL(request.url)
+    const status = searchParams.get("status") || ""
+    const employeeId = searchParams.get("employeeId") || ""
+    const page = parseInt(searchParams.get("page") || "1")
+    const limit = parseInt(searchParams.get("limit") || "10")
+    const skip = (page - 1) * limit
 
-  const [leaves, total] = await Promise.all([
-    prisma.leave.findMany({
-      where,
-      include: {
-        user: {
-          select: {
-            id: true,
-            name: true,
-            employeeId: true,
-            department: true,
-            profilePhoto: true,
+    let where: any = {}
+
+    if (session.user.role === "EMPLOYEE") {
+      where.userId = session.user.id
+    } else {
+      if (employeeId && employeeId !== "all") {
+        where.userId = employeeId
+      }
+    }
+
+    if (status && status !== "all") {
+      where.status = status
+    }
+
+    const [leaves, total] = await Promise.all([
+      prisma.leave.findMany({
+        where,
+        include: {
+          user: {
+            select: {
+              id: true,
+              name: true,
+              employeeId: true,
+              department: true,
+              profilePhoto: true,
+            }
+          },
+          approvedBy: {
+            select: { name: true }
           }
         },
-        approvedBy: {
-          select: { name: true }
-        }
-      },
-      orderBy: { createdAt: "desc" },
-      skip,
-      take: limit,
-    }),
-    prisma.leave.count({ where })
-  ])
+        orderBy: { createdAt: "desc" },
+        skip,
+        take: limit,
+      }),
+      prisma.leave.count({ where })
+    ])
 
-  return NextResponse.json({
-    leaves,
-    pagination: {
-      total,
-      page,
-      limit,
-      totalPages: Math.ceil(total / limit),
-      hasNext: page < Math.ceil(total / limit),
-      hasPrev: page > 1,
-    }
-  })
+    return NextResponse.json({
+      leaves,
+      pagination: {
+        total,
+        page,
+        limit,
+        totalPages: Math.ceil(total / (limit || 1)),
+        hasNext: page < Math.ceil(total / (limit || 1)),
+        hasPrev: page > 1,
+      }
+    })
+  } catch (error) {
+    console.error("[LEAVES_GET_API] Error:", error)
+    return NextResponse.json(
+      { error: "Failed to fetch leaves", leaves: [], pagination: { total: 0, page: 1, limit: 10, totalPages: 0, hasNext: false, hasPrev: false } },
+      { status: 500 }
+    )
+  }
 }
 
 // POST /api/leaves
@@ -208,22 +213,30 @@ export async function POST(request: Request) {
     }
   })
 
-  // Notify admin
-  const admin = await prisma.user.findFirst({
-    where: { role: "ADMIN" }
-  })
+  // Notify employee (Batman)
+  sendNotification(
+    session.user.id,
+    "Leave Request Submitted",
+    `Your request for ${totalDays} day(s) of ${leaveType.toLowerCase()} leave has been submitted.`,
+    "GENERAL"
+  ).catch(() => {})
 
-  if (admin) {
-    await prisma.notification.create({
-      data: {
-        userId: admin.id,
-        title: "New Leave Request",
-        message: `${leave.user.name} has applied for ${totalDays} day(s) of ${leaveType.toLowerCase()} leave`,
-        type: "GENERAL",
-        isRead: false,
-      }
-    })
-  }
+  // Notify all admins
+  prisma.user.findMany({
+    where: { role: "ADMIN", isActive: true },
+    select: { id: true }
+  }).then((admins) => {
+    Promise.all(
+      admins.map((admin) =>
+        sendNotification(
+          admin.id,
+          "New Leave Request",
+          `${leave.user.name} has applied for ${totalDays} day(s) of ${leaveType.toLowerCase()} leave`,
+          "GENERAL"
+        )
+      )
+    ).catch(() => {})
+  }).catch(() => {})
 
   // Audit log
   await prisma.auditLog.create({

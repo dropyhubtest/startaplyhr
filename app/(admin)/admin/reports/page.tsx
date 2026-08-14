@@ -51,8 +51,8 @@ export default function ReportsPage() {
         month: String(selectedMonth),
         year: String(selectedYear),
       })
+      params.append("employeeId", selectedEmployee)
       if (activeTab === "attendance") {
-        params.append("employeeId", selectedEmployee)
         const res = await fetch(`/api/reports/attendance?${params}`)
         if (!res.ok) throw new Error()
         setAttendanceReport(await res.json())
@@ -93,7 +93,7 @@ export default function ReportsPage() {
   }, [activeTab, selectedMonth, selectedYear, selectedEmployee])
 
   return (
-    <div className="max-w-7xl mx-auto space-y-6">
+    <div className="max-w-7xl mx-auto space-y-6 animate-in-fade">
       
       {/* Page Header */}
       <div className="flex items-start justify-between">
@@ -185,12 +185,12 @@ export default function ReportsPage() {
               </label>
               <Select value={selectedEmployee} 
                 onValueChange={(val) => setSelectedEmployee(val || "all")}>
-                <SelectTrigger className="h-10 bg-white 
-                  border-slate-200 hover:border-slate-300 
-                  focus:border-indigo-500 
-                  focus:ring-2 focus:ring-indigo-500/10 
-                  text-[13px]">
-                  <SelectValue />
+                <SelectTrigger className="h-10 bg-white border-slate-200 hover:border-slate-300 focus:border-indigo-500 focus:ring-2 focus:ring-indigo-500/10 text-[13px]">
+                  <SelectValue>
+                    {selectedEmployee === "all"
+                      ? "All Employees"
+                      : employees.find((e) => e.id === selectedEmployee)?.name || "Selected Employee"}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent className="bg-white border 
                   border-slate-200 shadow-lg rounded-lg">
@@ -444,10 +444,111 @@ function AttendanceReportView({ data }: { data: any }) {
 }
 
 function WorkHoursReportView({ data }: { data: any }) {
-  const chartData = data.report.map((r: any) => ({
+  if (data.type === "individual") {
+    return (
+      <div className="space-y-6">
+        <div className="bg-white border border-slate-200/70 rounded-xl overflow-hidden shadow-sm">
+          <div className="px-6 py-4 border-b border-slate-100 bg-gradient-to-r from-slate-50/80 to-blue-50/30 flex items-center justify-between">
+            <div>
+              <h3 className="text-[15px] font-semibold text-slate-900">{data.employee.name}</h3>
+              <p className="text-[12px] text-slate-500 mt-0.5">{data.employee.department} • {data.employee.jobTitle || "Employee"}</p>
+            </div>
+            <span className="font-mono text-xs font-bold bg-indigo-50 text-indigo-700 px-2.5 py-1 rounded border border-indigo-100">
+              {data.employee.employeeId}
+            </span>
+          </div>
+
+          <div className="p-6">
+            {/* Employee Specific Cards ONLY — NO Team Cards */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
+              <StatsCard 
+                title="Total Work Hours" 
+                value={`${data.summary.totalHours}h`} 
+                color="indigo" 
+              />
+              <StatsCard 
+                title="Daily Average" 
+                value={`${(data.summary.avgMinutesPerDay / 60).toFixed(1)}h/day`} 
+                color="blue" 
+              />
+              <StatsCard 
+                title="Overtime Hours" 
+                value={`${data.summary.totalOvertimeHours}h`} 
+                color="emerald" 
+              />
+              <StatsCard 
+                title="Distance Traveled" 
+                value={`${data.summary.totalDistanceKm} km`} 
+                color="purple" 
+              />
+            </div>
+
+            {/* Daily Logs Table with Authentic Location Data */}
+            <div className="overflow-x-auto border border-slate-100 rounded-lg">
+              <table className="w-full text-left text-sm">
+                <thead className="bg-slate-50/50 text-slate-500 font-medium border-b border-slate-200">
+                  <tr>
+                    <th className="px-4 py-3 uppercase tracking-wider text-[11px]">Date</th>
+                    <th className="px-4 py-3 uppercase tracking-wider text-[11px]">Clock-In Time</th>
+                    <th className="px-4 py-3 uppercase tracking-wider text-[11px]">From Location</th>
+                    <th className="px-4 py-3 uppercase tracking-wider text-[11px]">Clock-Out Time</th>
+                    <th className="px-4 py-3 uppercase tracking-wider text-[11px]">To Location</th>
+                    <th className="px-4 py-3 uppercase tracking-wider text-[11px] text-right">Distance</th>
+                    <th className="px-4 py-3 uppercase tracking-wider text-[11px] text-right">Work Hours</th>
+                    <th className="px-4 py-3 uppercase tracking-wider text-[11px] text-center">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {data.dailyLogs.map((log: any) => (
+                    <tr key={log.id} className="hover:bg-slate-50 transition-colors">
+                      <td className="px-4 py-3 font-medium text-slate-900">
+                        {new Date(log.date).toLocaleDateString()}
+                      </td>
+                      <td className="px-4 py-3 text-slate-700">
+                        {log.loginTime ? formatTime(log.loginTime) : "-"}
+                      </td>
+                      <td className="px-4 py-3 text-slate-600 text-xs">
+                        {log.loginAddress || log.loginCity || "N/A"}
+                      </td>
+                      <td className="px-4 py-3 text-slate-700">
+                        {log.logoutTime ? formatTime(log.logoutTime) : "-"}
+                      </td>
+                      <td className="px-4 py-3 text-slate-600 text-xs">
+                        {log.logoutAddress || log.logoutCity || "N/A"}
+                      </td>
+                      <td className="px-4 py-3 text-right font-medium text-purple-600">
+                        {log.totalDistanceKm ? `${log.totalDistanceKm.toFixed(2)} km` : "0 km"}
+                      </td>
+                      <td className="px-4 py-3 text-right font-bold text-indigo-600">
+                        {formatDuration(log.netWorkMinutes)}
+                      </td>
+                      <td className="px-4 py-3 text-center">
+                        <span className={cn(
+                          "px-2 py-0.5 rounded text-[10px] font-bold uppercase",
+                          log.status === "PRESENT" && "bg-emerald-50 text-emerald-700 border border-emerald-200",
+                          log.status === "LATE" && "bg-amber-50 text-amber-700 border border-amber-200",
+                          log.status === "HALFDAY" && "bg-orange-50 text-orange-700 border border-orange-200",
+                          log.status === "ABSENT" && "bg-rose-50 text-rose-700 border border-rose-200"
+                        )}>
+                          {log.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  // All Employees Team View
+  const chartData = (data.report || []).map((r: any) => ({
     name: (r.employee?.name || "").split(" ")[0],
     hours: r.totalHours,
-    overtime: Math.round(r.totalOvertimeMinutes / 60 * 10) / 10,
+    overtime: Math.round((r.totalOvertimeMinutes / 60) * 10) / 10,
   }))
 
   return (
@@ -455,19 +556,19 @@ function WorkHoursReportView({ data }: { data: any }) {
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatsCard 
           title="Total Team Hours"
-          value={`${(data.teamStats.totalMinutes/60).toFixed(0)}h`}
+          value={`${(data.teamStats?.totalMinutes / 60 || 0).toFixed(0)}h`}
           color="indigo" />
         <StatsCard 
           title="Team Average"
-          value={`${(data.teamStats.avgMinutesPerEmployee/60).toFixed(1)}h`}
+          value={`${(data.teamStats?.avgMinutesPerEmployee / 60 || 0).toFixed(1)}h`}
           color="blue" />
         <StatsCard 
           title="Top Performer"
-          value={data.teamStats.highestHours?.employee.name || "-"}
+          value={data.teamStats?.highestHours?.employee?.name || "-"}
           color="emerald" />
         <StatsCard
           title="Needs Attention"
-          value={data.teamStats.lowestHours?.employee.name || "-"}
+          value={data.teamStats?.lowestHours?.employee?.name || "-"}
           color="amber" />
       </div>
 
@@ -503,18 +604,20 @@ function WorkHoursReportView({ data }: { data: any }) {
                 <th className="px-4 py-3 uppercase tracking-wider text-[11px] text-right">Total Hours</th>
                 <th className="px-4 py-3 uppercase tracking-wider text-[11px] text-right">Avg/Day</th>
                 <th className="px-4 py-3 uppercase tracking-wider text-[11px] text-right">Overtime</th>
+                <th className="px-4 py-3 uppercase tracking-wider text-[11px] text-right">Distance (km)</th>
                 <th className="px-4 py-3 uppercase tracking-wider text-[11px] text-center">Late Arrivals</th>
                 <th className="px-4 py-3 uppercase tracking-wider text-[11px] text-center">Avg Login</th>
                 <th className="px-4 py-3 uppercase tracking-wider text-[11px] text-center">Avg Logout</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
-              {data.report.map((r: any) => (
+              {(data.report || []).map((r: any) => (
                 <tr key={r.employee.id} className="hover:bg-slate-50 transition-colors">
                   <td className="px-4 py-3 font-medium text-slate-900">{r.employee.name}</td>
                   <td className="px-4 py-3 text-right font-medium text-indigo-600">{r.totalHours}h</td>
                   <td className="px-4 py-3 text-right">{(r.avgMinutesPerDay / 60).toFixed(1)}h</td>
                   <td className="px-4 py-3 text-right text-emerald-600">{(r.totalOvertimeMinutes / 60).toFixed(1)}h</td>
+                  <td className="px-4 py-3 text-right font-medium text-purple-600">{r.totalDistanceKm || 0} km</td>
                   <td className="px-4 py-3 text-center">{r.lateArrivals}</td>
                   <td className="px-4 py-3 text-center">{r.avgLoginTime}</td>
                   <td className="px-4 py-3 text-center">{r.avgLogoutTime}</td>

@@ -18,16 +18,11 @@ import {
   ChevronLeft, ChevronRight, CalendarDays, List, Calendar as CalendarIcon, UserX
 } from "lucide-react"
 import { isWeekend, isBefore } from "date-fns"
+import { useQuery, useQueryClient } from "@tanstack/react-query"
 
 export default function AdminLeavesPage() {
+  const queryClient = useQueryClient()
   const [activeTab, setActiveTab] = useState("pending")
-  const [pendingLeaves, setPendingLeaves] = useState<any[]>([])
-  const [allLeaves, setAllLeaves] = useState<any[]>([])
-  const [calendarData, setCalendarData] = useState<any>({})
-  const [allBalances, setAllBalances] = useState<any[]>([])
-  const [employees, setEmployees] = useState<any[]>([])
-  
-  const [loading, setLoading] = useState(true)
   const [statusFilter, setStatusFilter] = useState("all")
   const [employeeFilter, setEmployeeFilter] = useState("all")
   const [currentPage, setCurrentPage] = useState(1)
@@ -41,17 +36,23 @@ export default function AdminLeavesPage() {
   const [approvingId, setApprovingId] = useState<string | null>(null)
   const [rejectingId, setRejectingId] = useState<string | null>(null)
 
-  const fetchPendingLeaves = useCallback(async () => {
-    try {
+  const { data: pendingQueryData, refetch: refetchPending } = useQuery({
+    queryKey: ["leaves", { status: "PENDING" }],
+    queryFn: async () => {
       const res = await fetch("/api/leaves?status=PENDING&limit=50")
-      if (res.ok) {
-        const data = await res.json()
-        setPendingLeaves(data.leaves)
-      }
-    } catch (e) {
-      toast.error("Failed to fetch pending leaves")
-    }
-  }, [])
+      if (!res.ok) throw new Error("Failed to fetch pending leaves")
+      return res.json()
+    },
+    staleTime: 5 * 60 * 1000,
+  })
+
+  const pendingLeaves = pendingQueryData?.leaves || []
+  const [allLeaves, setAllLeaves] = useState<any[]>([])
+  const [calendarData, setCalendarData] = useState<any>({})
+  const [allBalances, setAllBalances] = useState<any[]>([])
+  const [employees, setEmployees] = useState<any[]>([])
+  
+  const [loading, setLoading] = useState(false)
 
   const fetchAllLeaves = useCallback(async () => {
     setLoading(true)
@@ -111,16 +112,24 @@ export default function AdminLeavesPage() {
     }
   }, [])
 
-  useEffect(() => {
-    fetchEmployees()
-    fetchPendingLeaves()
-  }, [fetchEmployees, fetchPendingLeaves])
+  const refreshAll = useCallback(async () => {
+    await Promise.all([
+      refetchPending(),
+      fetchAllLeaves(),
+      fetchBalances(),
+      fetchCalendar(calendarMonth, calendarYear),
+    ])
+    queryClient.refetchQueries({ queryKey: ["leaves"] })
+    queryClient.refetchQueries({ queryKey: ["admin-stats"] })
+    queryClient.refetchQueries({ queryKey: ["live-status"] })
+  }, [refetchPending, fetchAllLeaves, fetchBalances, fetchCalendar, calendarMonth, calendarYear, queryClient])
 
   useEffect(() => {
-    if (activeTab === "all") fetchAllLeaves()
-    else if (activeTab === "calendar") fetchCalendar(calendarMonth, calendarYear)
-    else if (activeTab === "balances") fetchBalances()
-  }, [activeTab, fetchAllLeaves, fetchCalendar, fetchBalances, calendarMonth, calendarYear])
+    fetchEmployees()
+    fetchAllLeaves()
+    fetchBalances()
+    fetchCalendar(calendarMonth, calendarYear)
+  }, [fetchEmployees, fetchAllLeaves, fetchBalances, fetchCalendar, calendarMonth, calendarYear])
 
   const handleApprove = async (leaveId: string) => {
     setApprovingId(leaveId)
@@ -128,7 +137,7 @@ export default function AdminLeavesPage() {
       const res = await fetch(`/api/leaves/${leaveId}/approve`, { method: "PUT" })
       if (res.ok) {
         toast.success("Leave approved!")
-        setPendingLeaves(prev => prev.filter(l => l.id !== leaveId))
+        await refreshAll()
       } else {
         const data = await res.json()
         toast.error(data.error || "Failed to approve leave")
@@ -150,7 +159,7 @@ export default function AdminLeavesPage() {
       })
       if (res.ok) {
         toast.success("Leave rejected")
-        setPendingLeaves(prev => prev.filter(l => l.id !== leaveId))
+        await refreshAll()
         setRejectModal(null)
         setRejectReason("")
       } else {
@@ -189,8 +198,31 @@ export default function AdminLeavesPage() {
     )
   }
 
+  const now = new Date()
+  const currentMonth = now.getMonth()
+  const currentYear = now.getFullYear()
+
+  const approvedThisMonth = (allLeaves || []).filter((l: any) => {
+    const d = new Date(l.createdAt || l.startDate)
+    return l.status === "APPROVED" && d.getMonth() === currentMonth && d.getFullYear() === currentYear
+  }).length
+
+  const rejectedThisMonth = (allLeaves || []).filter((l: any) => {
+    const d = new Date(l.createdAt || l.startDate)
+    return l.status === "REJECTED" && d.getMonth() === currentMonth && d.getFullYear() === currentYear
+  }).length
+
+  const onLeaveToday = (allLeaves || []).filter((l: any) => {
+    if (l.status !== "APPROVED") return false
+    const s = new Date(l.startDate)
+    s.setHours(0, 0, 0, 0)
+    const e = new Date(l.endDate)
+    e.setHours(23, 59, 59, 999)
+    return s <= now && e >= now
+  }).length
+
   return (
-    <div className="max-w-7xl mx-auto space-y-6">
+    <div className="max-w-7xl mx-auto space-y-6 animate-in-fade">
       <PageHeader
         title="Leave Management"
         description="Review and manage employee leave requests"
@@ -198,9 +230,9 @@ export default function AdminLeavesPage() {
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <StatsCard title="Pending Requests" value={pendingLeaves.length} icon={CalendarClock} color="amber" />
-        <StatsCard title="Approved This Month" value="—" icon={CheckCircle2} color="emerald" />
-        <StatsCard title="Rejected This Month" value="—" icon={Ban} color="rose" />
-        <StatsCard title="On Leave Today" value="—" icon={CalendarDays} color="blue" />
+        <StatsCard title="Approved This Month" value={approvedThisMonth} icon={CheckCircle2} color="emerald" />
+        <StatsCard title="Rejected This Month" value={rejectedThisMonth} icon={Ban} color="rose" />
+        <StatsCard title="On Leave Today" value={onLeaveToday} icon={CalendarDays} color="blue" />
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
@@ -241,7 +273,7 @@ export default function AdminLeavesPage() {
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-              {pendingLeaves.map(leave => (
+              {pendingLeaves.map((leave: any) => (
                 <div key={leave.id} className="bg-white rounded-xl border border-slate-200/70 shadow-sm p-5 hover:shadow-md transition-shadow flex flex-col">
                   <div className="flex items-start justify-between mb-4">
                     <div className="flex items-center gap-3">
@@ -316,7 +348,11 @@ export default function AdminLeavesPage() {
             <div className="p-4 border-b border-slate-100 bg-gradient-to-r from-slate-50/80 to-blue-50/30 flex flex-col sm:flex-row gap-3">
               <Select value={employeeFilter} onValueChange={(v) => { setEmployeeFilter(v as string); setCurrentPage(1); }}>
                 <SelectTrigger className="w-full sm:w-[220px] bg-white h-9 text-[13px] border-slate-200 shadow-sm">
-                  <SelectValue placeholder="All Employees" />
+                  <SelectValue>
+                    {employeeFilter === "all"
+                      ? "All Employees"
+                      : employees.find((e) => e.id === employeeFilter)?.name || "Selected Employee"}
+                  </SelectValue>
                 </SelectTrigger>
                 <SelectContent className="border-slate-200 shadow-lg rounded-lg">
                   <SelectItem value="all">All Employees</SelectItem>
@@ -358,6 +394,7 @@ export default function AdminLeavesPage() {
                       <th className="uppercase tracking-wider text-[11px] px-6 py-3">Days</th>
                       <th className="uppercase tracking-wider text-[11px] px-6 py-3">Applied</th>
                       <th className="uppercase tracking-wider text-[11px] px-6 py-3">Status</th>
+                      <th className="uppercase tracking-wider text-[11px] px-6 py-3">Reason</th>
                       <th className="uppercase tracking-wider text-[11px] px-6 py-3 text-right">Action</th>
                     </tr>
                   </thead>
@@ -390,6 +427,20 @@ export default function AdminLeavesPage() {
                         <td className="px-6 py-4 text-[13px] font-medium text-slate-500 whitespace-nowrap">{formatDate(leave.createdAt)}</td>
                         <td className="px-6 py-4 whitespace-nowrap">
                           <StatusBadge status={leave.status} size="sm" />
+                        </td>
+                        <td className="px-6 py-4 max-w-[260px] min-w-[180px]">
+                          <TooltipProvider>
+                            <Tooltip>
+                              <TooltipTrigger className="text-left w-full">
+                                <span className="cursor-help text-[13px] text-slate-700 font-medium hover:text-slate-900 line-clamp-2 leading-snug whitespace-pre-wrap block">
+                                  {leave.reason}
+                                </span>
+                              </TooltipTrigger>
+                              <TooltipContent className="max-w-xs whitespace-pre-wrap bg-slate-900 text-white border-slate-800 text-[12px] font-medium p-3 rounded-lg shadow-xl leading-relaxed">
+                                <p>{leave.reason}</p>
+                              </TooltipContent>
+                            </Tooltip>
+                          </TooltipProvider>
                         </td>
                         <td className="px-6 py-4 text-right whitespace-nowrap">
                           {leave.status === "PENDING" ? (
